@@ -66,6 +66,12 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
           </tr>
           <tr>
             <th>
+              <kbd>f</kbd>
+            </th>
+            <td>Center the selected node on the tree</td>
+          </tr>
+          <tr>
+            <th>
               <kbd>c</kbd>
             </th>
             <td>Complete the selected eligible node</td>

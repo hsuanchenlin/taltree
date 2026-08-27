@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   CAMERA_LIMITS,
+  CAMERA_MOTION,
+  centerCameraOn,
   clampZoom,
+  dragVelocity,
+  easeOutCubic,
   ensureVisible,
   fitCamera,
+  glideStopped,
+  lerpCamera,
+  rebaseDragOrigin,
+  shouldGlide,
+  stepMomentum,
   zoomAbout,
+  zoomEase,
+  zoomSettled,
 } from "./camera";
-import type { Camera } from "./camera";
+import type { Camera, CameraVelocity } from "./camera";
 
 const VIEWPORT = { width: 800, height: 600 };
 
@@ -120,5 +131,183 @@ describe("ensureVisible", () => {
       VIEWPORT.width - CAMERA_LIMITS.visibleMargin,
     );
     expect(moved.k).toBe(zoomed.k);
+  });
+});
+
+describe("dragVelocity", () => {
+  it("measures pixels per second across the velocity window", () => {
+    const velocity = dragVelocity([
+      { x: 0, y: 0, t: 0 },
+      { x: 50, y: 0, t: 50 },
+      { x: 100, y: -20, t: 100 },
+    ]);
+    expect(velocity.vx).toBeCloseTo(1000, 10);
+    expect(velocity.vy).toBeCloseTo(-200, 10);
+  });
+
+  it("ignores samples older than the window so a flick survives a slow start", () => {
+    const samples = [
+      { x: 0, y: 0, t: 0 },
+      { x: 5, y: 0, t: 500 },
+      { x: 45, y: 0, t: 550 },
+      { x: 85, y: 0, t: 600 },
+    ];
+    const velocity = dragVelocity(samples);
+    expect(velocity.vx).toBeCloseTo(800, 10);
+  });
+
+  it("returns zero for a stationary or single sample", () => {
+    expect(dragVelocity([])).toEqual({ vx: 0, vy: 0 });
+    expect(dragVelocity([{ x: 3, y: 4, t: 10 }])).toEqual({ vx: 0, vy: 0 });
+    expect(
+      dragVelocity([
+        { x: 3, y: 4, t: 10 },
+        { x: 3, y: 4, t: 60 },
+      ]),
+    ).toEqual({ vx: 0, vy: 0 });
+  });
+});
+
+describe("momentum panning", () => {
+  const frame = CAMERA_MOTION.referenceFrameMs;
+
+  it("only glides past the minimum release speed", () => {
+    expect(shouldGlide({ vx: 30, vy: 20 })).toBe(false);
+    expect(shouldGlide({ vx: 40.1, vy: 0 })).toBe(true);
+    expect(shouldGlide({ vx: 0, vy: -100 })).toBe(true);
+  });
+
+  it("advances the camera by velocity and decays by the friction constant", () => {
+    const camera: Camera = { x: 10, y: 20, k: 1.5 };
+    const velocity: CameraVelocity = { vx: 600, vy: -300 };
+    const step = stepMomentum(camera, velocity, frame);
+    expect(step.camera.x).toBeCloseTo(10 + 600 * (frame / 1000), 10);
+    expect(step.camera.y).toBeCloseTo(20 - 300 * (frame / 1000), 10);
+    expect(step.camera.k).toBe(1.5);
+    expect(step.velocity.vx).toBeCloseTo(600 * CAMERA_MOTION.frictionPerFrame, 10);
+    expect(step.velocity.vy).toBeCloseTo(-300 * CAMERA_MOTION.frictionPerFrame, 10);
+  });
+
+  it("decays to rest instead of drifting forever", () => {
+    let camera: Camera = { x: 0, y: 0, k: 1 };
+    let velocity: CameraVelocity = { vx: 800, vy: 0 };
+    let frames = 0;
+    while (!glideStopped(velocity) && frames < 1000) {
+      const step = stepMomentum(camera, velocity, frame);
+      camera = step.camera;
+      velocity = step.velocity;
+      frames += 1;
+    }
+    expect(frames).toBeGreaterThan(10);
+    expect(frames).toBeLessThan(1000);
+    expect(velocity).toEqual({ vx: 0, vy: 0 });
+    // Total coast distance of an exponential decay: v0 * dt / (1 - friction).
+    const expected = 800 * (frame / 1000) * (1 / (1 - CAMERA_MOTION.frictionPerFrame));
+    expect(camera.x).toBeGreaterThan(expected * 0.9);
+    expect(camera.x).toBeLessThan(expected);
+  });
+
+  it("damps by elapsed time, not by frame count", () => {
+    const velocity: CameraVelocity = { vx: 500, vy: 0 };
+    const whole = stepMomentum({ x: 0, y: 0, k: 1 }, velocity, frame).velocity;
+    const half = stepMomentum({ x: 0, y: 0, k: 1 }, velocity, frame / 2).velocity;
+    const halved = stepMomentum({ x: 0, y: 0, k: 1 }, half, frame / 2).velocity;
+    expect(halved.vx).toBeCloseTo(whole.vx, 6);
+  });
+
+  it("stops cleanly once it falls below the stop speed", () => {
+    const stop = CAMERA_MOTION.stopPxPerFrame * 60;
+    const step = stepMomentum(
+      { x: 0, y: 0, k: 1 },
+      { vx: stop * 1.05 * CAMERA_MOTION.frictionPerFrame, vy: 0 },
+      frame,
+    );
+    expect(step.velocity).toEqual({ vx: 0, vy: 0 });
+    expect(glideStopped(step.velocity)).toBe(true);
+  });
+});
+
+describe("lerpCamera", () => {
+  const from: Camera = { x: 0, y: 100, k: 0.5 };
+  const to: Camera = { x: 200, y: -100, k: 1.5 };
+
+  it("honours the interpolation endpoints and midpoint", () => {
+    expect(lerpCamera(from, to, 0)).toEqual(from);
+    expect(lerpCamera(from, to, 1)).toEqual(to);
+    expect(lerpCamera(from, to, 0.5)).toEqual({ x: 100, y: 0, k: 1 });
+  });
+
+  it("clamps t to the 0..1 range", () => {
+    expect(lerpCamera(from, to, -2)).toEqual(from);
+    expect(lerpCamera(from, to, 3)).toEqual(to);
+  });
+
+  it("keeps zoom inside the camera limits while lerping past them", () => {
+    const wide = lerpCamera({ x: 0, y: 0, k: CAMERA_LIMITS.minZoom }, { x: 0, y: 0, k: 0.01 }, 1);
+    expect(wide.k).toBe(CAMERA_LIMITS.minZoom);
+    const tight = lerpCamera({ x: 0, y: 0, k: CAMERA_LIMITS.maxZoom }, { x: 0, y: 0, k: 99 }, 0.9);
+    expect(tight.k).toBeLessThanOrEqual(CAMERA_LIMITS.maxZoom);
+  });
+});
+
+describe("smooth zoom easing", () => {
+  it("covers the same distance per second regardless of frame rate", () => {
+    const whole = zoomEase(CAMERA_MOTION.referenceFrameMs);
+    const half = zoomEase(CAMERA_MOTION.referenceFrameMs / 2);
+    expect(1 - whole).toBeCloseTo((1 - half) * (1 - half), 10);
+  });
+
+  it("settles only within the snap tolerances", () => {
+    const target: Camera = { x: 100, y: 50, k: 1.2 };
+    expect(zoomSettled(target, target)).toBe(true);
+    expect(zoomSettled({ ...target, x: target.x + 5 }, target)).toBe(false);
+    expect(zoomSettled({ ...target, k: target.k + 0.01 }, target)).toBe(false);
+  });
+});
+
+describe("rebaseDragOrigin", () => {
+  const origin = { camX: 40, camY: -25 };
+
+  it("absorbs a camera shift so the next drag delta keeps it", () => {
+    const from: Camera = { x: 100, y: 200, k: 1 };
+    const to = zoomAbout(from, 1.15, { x: 400, y: 300 });
+    const rebased = rebaseDragOrigin(origin, from, to);
+    const dragDelta = { x: 60, y: -35 };
+    expect(rebased.camX + dragDelta.x).toBeCloseTo(
+      origin.camX + dragDelta.x + (to.x - from.x),
+      10,
+    );
+    expect(rebased.camY + dragDelta.y).toBeCloseTo(
+      origin.camY + dragDelta.y + (to.y - from.y),
+      10,
+    );
+  });
+
+  it("leaves the origin alone when the camera only changed zoom", () => {
+    const camera: Camera = { x: 100, y: 200, k: 1 };
+    expect(rebaseDragOrigin(origin, camera, { ...camera, k: 2 })).toEqual(origin);
+  });
+});
+
+describe("focus animation", () => {
+  it("easeOutCubic anchors the endpoints and leads linear mid-flight", () => {
+    expect(easeOutCubic(0)).toBe(0);
+    expect(easeOutCubic(1)).toBe(1);
+    expect(easeOutCubic(0.5)).toBeCloseTo(0.875, 10);
+  });
+
+  it("centerCameraOn puts the node center at the viewport center", () => {
+    const node = box(400, 300);
+    const camera: Camera = { x: 0, y: 0, k: 1.6 };
+    const focused = centerCameraOn(node, camera, VIEWPORT);
+    expect(focused.k).toBe(camera.k);
+    expect(focused.x + (node.x + node.width / 2) * camera.k).toBeCloseTo(
+      VIEWPORT.width / 2,
+      10,
+    );
+    expect(focused.y + (node.y + node.height / 2) * camera.k).toBeCloseTo(
+      VIEWPORT.height / 2,
+      10,
+    );
   });
 });

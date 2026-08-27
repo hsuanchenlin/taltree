@@ -18,7 +18,9 @@ import {
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
   plaqueHeight,
+  plaqueScale,
   plaqueVisible,
+  renderedPlaqueHeight,
   SOCKET_RADIUS,
   socketCenter,
 } from "./relicGeometry";
@@ -42,6 +44,9 @@ const AURA_TINT = 0xf0c25a;
 const BREATH_PERIOD_S = 2.4;
 const BREATH_BASE = 0.46;
 const BREATH_AMPLITUDE = 0.08;
+
+/** Plaque fade speed (alpha per second) when the LOD threshold is crossed. */
+const PLAQUE_FADE_RATE = 8;
 
 const FONT_UI = '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif';
 
@@ -74,6 +79,11 @@ interface NodeView {
   plaqueTitle: Text;
   plaqueSub: Text;
   plaqueCaption: Text;
+  /** Current plaque opacity; -1 until the first LOD pass snaps it into place. */
+  plaqueAlpha: number;
+  /** Opacity the plaque is fading toward (0 or 1). */
+  plaqueTarget: number;
+  renderedPlaqueHeight: number;
 }
 
 function edgeSignatureOf(edges: readonly LaidOutEdge[]): string {
@@ -86,11 +96,13 @@ function plaqueStackHeight(view: NodeView): number {
   const caption = view.plaqueCaption.visible
     ? view.plaqueCaption.height + PLAQUE_CAPTION_GAP
     : 0;
+  const sub = view.plaqueSub.visible
+    ? view.plaqueSub.height + PLAQUE_TITLE_GAP
+    : 0;
   return (
     PLAQUE_PAD_TOP +
     view.plaqueTitle.height +
-    PLAQUE_TITLE_GAP +
-    view.plaqueSub.height +
+    sub +
     caption +
     PLAQUE_PAD_BOTTOM
   );
@@ -101,13 +113,17 @@ function trimTail(text: string): string {
 }
 
 /**
- * Shortens plaque text until it fits the height `plaqueHeight` reserves for the
+ * Shortens plaque text until it fits the allocated plaque height for the
  * node, so a very long title can neither spill past the plaque nor push the
  * drawn plaque beyond the box the tree hit-tests clicks against.
  */
 function elideToFit(view: NodeView, node: LaidOutNode, height: number): void {
   let title = node.title;
   let caption = node.caption ?? "";
+  if (plaqueStackHeight(view) > height && view.plaqueCaption.visible) {
+    view.plaqueCaption.visible = false;
+  }
+  if (plaqueStackHeight(view) > height) view.plaqueSub.visible = false;
   for (let step = 0; step < ELIDE_STEPS; step += 1) {
     if (plaqueStackHeight(view) <= height) return;
     if (view.plaqueCaption.visible && caption.length > title.length) {
@@ -224,8 +240,18 @@ export class RelicWorld {
     const alpha =
       BREATH_BASE +
       BREATH_AMPLITUDE * (0.5 + 0.5 * Math.sin(phase * Math.PI * 2));
+    const fadeStep = Math.min(1, (ticker.deltaMS / 1000) * PLAQUE_FADE_RATE);
     for (const view of this.nodes.values()) {
       if (view.glow.visible) view.glow.alpha = alpha;
+      if (view.plaqueAlpha !== view.plaqueTarget) {
+        let next =
+          view.plaqueAlpha +
+          (view.plaqueTarget - view.plaqueAlpha) * fadeStep;
+        if (Math.abs(view.plaqueTarget - next) < 0.02) next = view.plaqueTarget;
+        view.plaqueAlpha = next;
+        view.plaque.alpha = next;
+        if (next === 0 && view.plaqueTarget === 0) view.plaque.visible = false;
+      }
     }
   }
 
@@ -297,6 +323,9 @@ export class RelicWorld {
     plaqueCaption.anchor.set(0.5, 0);
     plaque.addChild(plaqueBg, plaqueTitle, plaqueSub, plaqueCaption);
     plaque.position.set(0, PLAQUE_OFFSET_Y);
+    // Hidden until the first `updatePlaques` decides (and snaps) its LOD state.
+    plaque.visible = false;
+    plaque.alpha = 0;
 
     container.addChild(aura, glow, halo, socket, ring, plaque);
     container.eventMode = "none";
@@ -313,6 +342,9 @@ export class RelicWorld {
       plaqueTitle,
       plaqueSub,
       plaqueCaption,
+      plaqueAlpha: -1,
+      plaqueTarget: 0,
+      renderedPlaqueHeight: 0,
     };
   }
 
@@ -331,20 +363,24 @@ export class RelicWorld {
         .stroke({ width: 3, color: SELECTION_RING });
     }
 
-    view.plaqueTitle.text = node.title;
-    view.plaqueSub.text = `${pointsLabel(node.cost)} · ${KIND_LABEL[node.kind]}`;
     if (node.caption) {
-      view.plaqueCaption.visible = true;
-      view.plaqueCaption.text = node.caption;
       view.plaqueCaption.style.fill = node.captionTone
         ? CAPTION_COLORS[node.captionTone]
         : 0xc7bdab;
-    } else {
-      view.plaqueCaption.visible = false;
-      view.plaqueCaption.text = "";
     }
 
-    const height = plaqueHeight(node);
+    const height = plaqueVisible(node, this.cameraK, this.hoveredId)
+      ? renderedPlaqueHeight(node, this.cameraK)
+      : plaqueHeight(node);
+    this.layoutPlaque(view, node, height);
+  }
+
+  private layoutPlaque(view: NodeView, node: LaidOutNode, height: number): void {
+    view.plaqueTitle.text = node.title;
+    view.plaqueSub.visible = true;
+    view.plaqueSub.text = `${pointsLabel(node.cost)} · ${KIND_LABEL[node.kind]}`;
+    view.plaqueCaption.visible = Boolean(node.caption);
+    view.plaqueCaption.text = node.caption ?? "";
     elideToFit(view, node, height);
     view.plaqueTitle.position.set(0, PLAQUE_PAD_TOP);
     const subY = PLAQUE_PAD_TOP + view.plaqueTitle.height + PLAQUE_TITLE_GAP;
@@ -359,15 +395,33 @@ export class RelicWorld {
       .roundRect(-PLAQUE_WIDTH / 2, 0, PLAQUE_WIDTH, height, 6)
       .fill({ color: 0x0c1016, alpha: 0.72 })
       .stroke({ width: 1, color: 0x2a2f38, alpha: 0.9 });
+    view.renderedPlaqueHeight = height;
   }
 
+  /**
+   * LOD plaque pass: which plaques show, how big they render, and where their
+   * fade is heading. Highlighted plaques (selected, hovered, unlocks-next)
+   * counter-scale below the LOD threshold so they stay legible; everything
+   * else fades out smoothly instead of popping.
+   */
   private updatePlaques(): void {
     for (const view of this.nodes.values()) {
-      view.plaque.visible = plaqueVisible(
-        view.node,
-        this.cameraK,
-        this.hoveredId,
-      );
+      const visible = plaqueVisible(view.node, this.cameraK, this.hoveredId);
+      const height = renderedPlaqueHeight(view.node, this.cameraK);
+      if (visible && height !== view.renderedPlaqueHeight) {
+        this.layoutPlaque(view, view.node, height);
+      }
+      view.plaque.scale.set(plaqueScale(view.node, this.cameraK));
+      const target = visible ? 1 : 0;
+      view.plaqueTarget = target;
+      // First pass after creation snaps instead of fading in from nothing.
+      if (this.reducedMotion || view.plaqueAlpha < 0) {
+        view.plaqueAlpha = target;
+        view.plaque.alpha = target;
+        view.plaque.visible = visible;
+        continue;
+      }
+      if (visible) view.plaque.visible = true;
     }
   }
 

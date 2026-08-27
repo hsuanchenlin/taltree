@@ -82,6 +82,10 @@ export default function TalentTreePixi({
       preference: "webgl",
       background: 0x0c1016,
       resolution: resolveResolution(),
+      // Without this Pixi leaves the canvas with no CSS size, so on a HiDPI
+      // display its intrinsic device-pixel buffer becomes its layout size and
+      // the slab paints at `resolution`x, clipped to the host's top-left corner.
+      autoDensity: true,
     });
     void init.then(
       () => {
