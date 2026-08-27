@@ -36,8 +36,10 @@ const CAPTION_LINE_HEIGHT = 15;
  */
 const TITLE_CHAR_WIDTH = 8;
 const CAPTION_CHAR_WIDTH = 7;
-/** Ranks sit 200 world units apart; a plaque must never reach the rank below. */
-const PLAQUE_MAX_HEIGHT = 200 - PLAQUE_TOP;
+/** Distance between two ranks in world units (`TREE_LAYOUT.nodeHeight + rankGap`). */
+export const RANK_PITCH = 200;
+/** A plaque at its laid-out size must never reach the rank below. */
+const PLAQUE_MAX_HEIGHT = RANK_PITCH - PLAQUE_TOP;
 
 export interface Point {
   x: number;
@@ -168,12 +170,24 @@ export function plaqueBox(
 /**
  * Counter-scale a plaque keeps so highlighted plaques (selected, hovered,
  * unlocks-next) stay readable below the LOD threshold instead of shrinking
- * with the world. At or above `LOD_READABLE_K` plaques render 1:1; the
- * counter-scale is capped so a plaque at minimum zoom cannot swamp the board.
+ * with the world. At or above `LOD_READABLE_K` plaques render 1:1; below it the
+ * counter-scale is capped - by `PLAQUE_MAX_SCALE` so a plaque at minimum zoom
+ * cannot swamp the board, and by the rank pitch so a tall plaque cannot grow
+ * across the ranks beneath it.
  */
-export function plaqueScale(cameraK: number): number {
+export function plaqueScale(
+  node: Pick<LaidOutNode, "title" | "caption">,
+  cameraK: number,
+): number {
   if (cameraK >= LOD_READABLE_K) return 1;
-  return Math.min(PLAQUE_MAX_SCALE, LOD_READABLE_K / Math.max(cameraK, 0.01));
+  const zoomScale = Math.min(
+    PLAQUE_MAX_SCALE,
+    LOD_READABLE_K / Math.max(cameraK, 0.01),
+  );
+  // A tall plaque grown by the zoom cap would span several ranks of the board,
+  // so its scaled height is also capped at one rank pitch.
+  const heightScale = RANK_PITCH / plaqueHeight(node);
+  return Math.max(1, Math.min(zoomScale, heightScale));
 }
 
 /**
@@ -187,7 +201,7 @@ export function plaqueHitBox(
   cameraK: number,
 ): Rect {
   const box = plaqueBox(node);
-  const scale = plaqueScale(cameraK);
+  const scale = plaqueScale(node, cameraK);
   if (scale === 1) return box;
   const anchorX = node.x + node.width / 2;
   return {

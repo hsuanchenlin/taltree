@@ -391,10 +391,9 @@ export class RelicWorld {
    * else fades out smoothly instead of popping.
    */
   private updatePlaques(): void {
-    const scale = plaqueScale(this.cameraK);
     for (const view of this.nodes.values()) {
       const visible = plaqueVisible(view.node, this.cameraK, this.hoveredId);
-      view.plaque.scale.set(scale);
+      view.plaque.scale.set(plaqueScale(view.node, this.cameraK));
       const target = visible ? 1 : 0;
       view.plaqueTarget = target;
       // First pass after creation snaps instead of fading in from nothing.

@@ -16,6 +16,7 @@ import {
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
   plaqueVisible,
+  RANK_PITCH,
   socketCenter,
   SOCKET_RADIUS,
   visualSignature,
@@ -305,18 +306,38 @@ describe("edge curves and dashes", () => {
 
 describe("plaqueScale (LOD legibility)", () => {
   it("renders plaques 1:1 at and above the readable zoom", () => {
-    expect(plaqueScale(LOD_READABLE_K)).toBe(1);
-    expect(plaqueScale(1.6)).toBe(1);
+    expect(plaqueScale(makeNode(), LOD_READABLE_K)).toBe(1);
+    expect(plaqueScale(makeNode(), 1.6)).toBe(1);
   });
 
   it("counter-scales below the threshold so highlighted plaques stay readable", () => {
-    expect(plaqueScale(0.5)).toBeCloseTo(LOD_READABLE_K / 0.5, 10);
-    expect(plaqueScale(0.425)).toBeCloseTo(2, 10);
+    expect(plaqueScale(makeNode(), 0.5)).toBeCloseTo(LOD_READABLE_K / 0.5, 10);
+    expect(plaqueScale(makeNode(), 0.425)).toBeCloseTo(2, 10);
   });
 
   it("caps the growth so a plaque at minimum zoom cannot swamp the board", () => {
-    expect(plaqueScale(0.25)).toBe(PLAQUE_MAX_SCALE);
-    expect(plaqueScale(0.01)).toBe(PLAQUE_MAX_SCALE);
+    expect(plaqueScale(makeNode(), 0.25)).toBe(PLAQUE_MAX_SCALE);
+    expect(plaqueScale(makeNode(), 0.01)).toBe(PLAQUE_MAX_SCALE);
+  });
+
+  it("keeps a scaled plaque within one rank pitch, however tall it is", () => {
+    const tall = makeNode({
+      title: "A deliberately long relic title that wraps onto several lines",
+      caption: "With a caption long enough to wrap across more lines as well",
+    });
+    expect(plaqueHeight(tall)).toBeGreaterThan(RANK_PITCH / PLAQUE_MAX_SCALE);
+    const scale = plaqueScale(tall, 0.01);
+    expect(scale).toBeLessThan(PLAQUE_MAX_SCALE);
+    expect(plaqueHeight(tall) * scale).toBeCloseTo(RANK_PITCH, 10);
+    expect(plaqueHitBox(tall, 0.01).height).toBeCloseTo(RANK_PITCH, 10);
+  });
+
+  it("never counter-scales a plaque below its laid-out size", () => {
+    const tall = makeNode({
+      title: "A deliberately long relic title that wraps onto several lines",
+      caption: "With a caption long enough to wrap across more lines as well",
+    });
+    expect(plaqueScale(tall, 0.8)).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -329,7 +350,7 @@ describe("plaqueHitBox", () => {
   it("grows around the plaque anchor (top center under the socket)", () => {
     const node = makeNode();
     const k = 0.5;
-    const scale = plaqueScale(k);
+    const scale = plaqueScale(node, k);
     const base = plaqueBox(node);
     const hit = plaqueHitBox(node, k);
     const anchorX = node.x + node.width / 2;
