@@ -1,12 +1,12 @@
-import { createRoot } from "@pixi/react";
+import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RelicWorld } from "../canvas/world";
 import type { Camera, LaidOutGraph } from "../graph";
 
 /**
  * The WebGL relic-slab stage. Loaded lazily from `TalentTree` so first paint
- * and the list view never wait on the pixi chunk. `@pixi/react` owns the
- * Application lifecycle only; the scene itself is the imperative `RelicWorld`.
+ * and the list view never wait on the pixi chunk. The scene itself is the
+ * imperative `RelicWorld`.
  */
 
 interface TalentTreePixiProps {
@@ -15,11 +15,6 @@ interface TalentTreePixiProps {
   hoveredId: string | null;
 }
 
-/**
- * The public root API returns the exact render promise that owns `app.init()`.
- * Catching that promise keeps failure handling scoped to this canvas instead
- * of inferring ownership from page-global rejection text.
- */
 const INIT_TIMEOUT_MS = 10_000;
 
 function resolveResolution(): number {
@@ -49,6 +44,17 @@ export default function TalentTreePixi({
     const canvas = canvasRef.current;
     if (!canvas) return;
     let active = true;
+    let disposed = false;
+    const app = new PixiApplication();
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      try {
+        app.destroy(true, { children: true });
+      } catch {
+        app.stage?.destroy({ children: true });
+      }
+    }
     const timer = window.setTimeout(() => {
       if (active) {
         setInitFailure(
@@ -56,9 +62,21 @@ export default function TalentTreePixi({
         );
       }
     }, INIT_TIMEOUT_MS);
-    const root = createRoot(canvas, {
-      onInit(app) {
-        if (!active) return;
+    const init = app.init({
+      canvas,
+      resizeTo: canvas.parentElement,
+      antialias: false,
+      roundPixels: true,
+      preference: "webgl",
+      background: 0x0c1016,
+      resolution: resolveResolution(),
+    });
+    void init.then(
+      () => {
+        if (!active) {
+          dispose();
+          return;
+        }
         window.clearTimeout(timer);
         const world = new RelicWorld(app);
         worldRef.current = world;
@@ -66,30 +84,21 @@ export default function TalentTreePixi({
         world.setCamera(latestRef.current.camera);
         world.setHoveredId(latestRef.current.hoveredId);
       },
-    });
-    const init = root.render(null, {
-      resizeTo: canvas.parentElement,
-      antialias: false,
-      roundPixels: true,
-      preference: "webgl",
-      background: 0x0c1016,
-      resolution: resolveResolution(),
-    }) as Promise<unknown>;
-    void init.catch((reason: unknown) => {
-      if (!active) return;
-      window.clearTimeout(timer);
-      setInitFailure(
-        reason instanceof Error ? reason : new Error(String(reason)),
-      );
-    });
+      (reason: unknown) => {
+        dispose();
+        if (!active) return;
+        window.clearTimeout(timer);
+        setInitFailure(
+          reason instanceof Error ? reason : new Error(String(reason)),
+        );
+      },
+    );
     return () => {
       active = false;
       window.clearTimeout(timer);
       worldRef.current?.destroy();
       worldRef.current = null;
-      const app = root.applicationState.app;
-      if (root.applicationState.isInitialised) app.destroy(true);
-      else void init.then(() => app.destroy(true), () => undefined);
+      void init.then(dispose, dispose);
     };
   }, []);
 
