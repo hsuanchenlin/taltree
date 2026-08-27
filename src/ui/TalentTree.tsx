@@ -4,6 +4,7 @@ import type { Camera, LaidOutGraph, LaidOutNode, ViewportSize } from "../graph";
 import { ensureVisible, fitCamera, READABLE_CAMERA, zoomAbout } from "../graph";
 import { KIND_LABEL, pointsLabel } from "./format";
 import { KindMark } from "./glyphs";
+import { isPointInsideViewport } from "./talentTreeInteraction";
 
 interface TalentTreeProps {
   tree: LaidOutGraph;
@@ -102,16 +103,23 @@ export function TalentTree({
   }, [hasNodes, zoomBy]);
 
   useEffect(() => {
-    function endGesture(pan: PanGesture) {
+    function endGesture(pan: PanGesture, retainClickSuppression: boolean) {
       panRef.current = null;
-      suppressClickRef.current = pan.moved;
+      suppressClickRef.current = pan.moved && retainClickSuppression;
       setPanning(false);
     }
     function onMove(event: PointerEvent) {
       const pan = panRef.current;
       if (!pan || event.pointerId !== pan.pointerId) return;
       if (event.pointerType === "mouse" && event.buttons === 0) {
-        endGesture(pan);
+        const viewport = viewportRef.current;
+        endGesture(
+          pan,
+          Boolean(
+            viewport &&
+              isPointInsideViewport(viewport.getBoundingClientRect(), event),
+          ),
+        );
         return;
       }
       const dx = event.clientX - pan.startX;
@@ -126,7 +134,15 @@ export function TalentTree({
     function onEnd(event: PointerEvent) {
       const pan = panRef.current;
       if (!pan || event.pointerId !== pan.pointerId) return;
-      endGesture(pan);
+      const viewport = viewportRef.current;
+      endGesture(
+        pan,
+        event.type === "pointerup" &&
+          Boolean(
+            viewport &&
+              isPointInsideViewport(viewport.getBoundingClientRect(), event),
+          ),
+      );
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);

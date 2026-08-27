@@ -10,6 +10,7 @@ export {
 export { layoutGraph, nodeBoxesOverlap } from "./layout";
 export { nearestNode } from "./navigate";
 export { projectGraph } from "./project";
+export { graphSelectionFor } from "./selection";
 export { TREE_LAYOUT } from "./types";
 export type { Camera, ViewportSize } from "./camera";
 export type {

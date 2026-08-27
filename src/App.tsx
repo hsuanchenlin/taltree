@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildTalentTree, nearestNode } from "./graph";
+import { buildTalentTree, graphSelectionFor, nearestNode } from "./graph";
 import { BudgetBar } from "./ui/BudgetBar";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatDay } from "./ui/format";
@@ -30,17 +30,13 @@ export function App() {
   const plannerRef = useRef(planner);
   plannerRef.current = planner;
   const [titleDraft, setTitleDraft] = useState(planner.plan.title);
-  const immediateUnlockIds = useMemo(
-    () => planner.explanation?.immediateUnlocks.map((ref) => ref.id) ?? [],
-    [planner.explanation],
-  );
   const tree = useMemo(
     () =>
-      buildTalentTree(planner.view, {
-        selectedId: planner.selectedId,
-        immediateUnlockIds,
-      }),
-    [planner.view, planner.selectedId, immediateUnlockIds],
+      buildTalentTree(
+        planner.view,
+        graphSelectionFor(planner.selectedId, planner.explanation),
+      ),
+    [planner.view, planner.selectedId, planner.explanation],
   );
   const treeRef = useRef(tree);
   treeRef.current = tree;
