@@ -95,6 +95,14 @@ export function TalentTree({
   const pixiLive = usePixi && !pixiFailed;
   const onPixiFailed = useCallback(() => setPixiFailed(true), []);
 
+  // The boundary forgets its own failure whenever it unmounts, which is exactly
+  // when `usePixi` goes false. This copy has to forget on the same transition,
+  // or a slab that remounts and initialises fine stays marked as failed.
+  useEffect(() => {
+    if (!usePixi) return;
+    return () => setPixiFailed(false);
+  }, [usePixi]);
+
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;

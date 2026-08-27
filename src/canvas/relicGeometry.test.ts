@@ -89,6 +89,16 @@ describe("plaqueBox", () => {
     ).toBeGreaterThan(Math.max(captioned, wrapped));
   });
 
+  it("reserves the extra lines a full-width title really wraps to", () => {
+    const latin = plaqueHeight(makeNode({ title: "x".repeat(14) }));
+    const cjk = plaqueHeight(makeNode({ title: "字".repeat(14) }));
+    expect(latin).toBe(plaqueHeight(makeNode()));
+    expect(cjk).toBeGreaterThan(latin);
+    expect(
+      plaqueHeight(makeNode({ caption: "等待「字字字字字字字字字字字字字字」" })),
+    ).toBeGreaterThan(plaqueHeight(makeNode({ caption: "Waiting on Draft" })));
+  });
+
   it("covers the plaque heights world.ts draws for realistic content", () => {
     // world.ts stacks 4px padding, a 13px title, a 11px cost/kind line, an
     // optional 11px caption, and 5px padding. These are the drawn extents.
@@ -106,14 +116,32 @@ describe("plaqueBox", () => {
 
 describe("wrappedLineCount", () => {
   it("is zero for empty text and one for text that fits", () => {
-    expect(wrappedLineCount("", 8)).toBe(0);
-    expect(wrappedLineCount("Draft", 8)).toBe(1);
+    expect(wrappedLineCount("", 8, 13)).toBe(0);
+    expect(wrappedLineCount("Draft", 8, 13)).toBe(1);
   });
 
   it("counts one line per wrap width", () => {
     const perLine = Math.floor(PLAQUE_WRAP_WIDTH / 8);
-    expect(wrappedLineCount("x".repeat(perLine), 8)).toBe(1);
-    expect(wrappedLineCount("x".repeat(perLine + 1), 8)).toBe(2);
+    expect(wrappedLineCount("x".repeat(perLine), 8, 13)).toBe(1);
+    expect(wrappedLineCount("x".repeat(perLine + 1), 8, 13)).toBe(2);
+  });
+
+  it("keeps whole words together and only breaks a word too long for a line", () => {
+    // Six 24px words plus five 8px gaps is 184px: the last word moves down.
+    expect(wrappedLineCount("abc abc abc abc abc abc", 8, 13)).toBe(2);
+    expect(wrappedLineCount("x".repeat(40), 8, 13)).toBe(3);
+  });
+
+  it("advances a full em per full-width glyph, as Pixi does", () => {
+    // 154 / 13 fits 11 ideographs a line, so 14 need two and 23 need three.
+    expect(wrappedLineCount("字".repeat(11), 8, 13)).toBe(1);
+    expect(wrappedLineCount("字".repeat(14), 8, 13)).toBe(2);
+    expect(wrappedLineCount("字".repeat(23), 8, 13)).toBe(3);
+    // Kana, Hangul, full-width forms, and astral emoji count the same.
+    expect(wrappedLineCount("あ".repeat(14), 8, 13)).toBe(2);
+    expect(wrappedLineCount("한".repeat(14), 8, 13)).toBe(2);
+    expect(wrappedLineCount("Ａ".repeat(14), 8, 13)).toBe(2);
+    expect(wrappedLineCount("🙂".repeat(14), 8, 13)).toBe(2);
   });
 });
 

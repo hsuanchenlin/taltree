@@ -7,10 +7,13 @@ import {
   dashPath,
   diffWorldNodes,
   edgeCurve,
+  PLAQUE_CAPTION_FONT_SIZE,
   PLAQUE_CAPTION_GAP,
   PLAQUE_OFFSET_Y,
   PLAQUE_PAD_BOTTOM,
   PLAQUE_PAD_TOP,
+  PLAQUE_SUB_FONT_SIZE,
+  PLAQUE_TITLE_FONT_SIZE,
   PLAQUE_TITLE_GAP,
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
@@ -252,7 +255,7 @@ export class RelicWorld {
       text: "",
       style: new TextStyle({
         fontFamily: FONT_UI,
-        fontSize: 13,
+        fontSize: PLAQUE_TITLE_FONT_SIZE,
         fontWeight: "600",
         fill: 0xf1ebe0,
         align: "center",
@@ -266,7 +269,7 @@ export class RelicWorld {
       text: "",
       style: new TextStyle({
         fontFamily: FONT_UI,
-        fontSize: 11,
+        fontSize: PLAQUE_SUB_FONT_SIZE,
         fill: 0xc7bdab,
         align: "center",
       }),
@@ -276,11 +279,12 @@ export class RelicWorld {
       text: "",
       style: new TextStyle({
         fontFamily: FONT_UI,
-        fontSize: 11,
+        fontSize: PLAQUE_CAPTION_FONT_SIZE,
         fill: 0xc7bdab,
         align: "center",
         wordWrap: true,
         wordWrapWidth: PLAQUE_WRAP_WIDTH,
+        breakWords: true,
       }),
     });
     plaqueCaption.anchor.set(0.5, 0);

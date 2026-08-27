@@ -21,12 +21,16 @@ export const PLAQUE_PAD_TOP = 4;
 export const PLAQUE_PAD_BOTTOM = 5;
 export const PLAQUE_TITLE_GAP = 1;
 export const PLAQUE_CAPTION_GAP = 3;
+export const PLAQUE_TITLE_FONT_SIZE = 13;
+export const PLAQUE_SUB_FONT_SIZE = 11;
+export const PLAQUE_CAPTION_FONT_SIZE = 11;
 const TITLE_LINE_HEIGHT = 17;
 const SUB_LINE_HEIGHT = 15;
 const CAPTION_LINE_HEIGHT = 15;
 /**
- * Deliberately wider than any glyph the plaque fonts draw at their size, so the
- * predicted line count is never below the one Pixi wraps to.
+ * Deliberately wider than any proportional glyph the plaque fonts draw at their
+ * size, so the predicted line count is never below the one Pixi wraps to.
+ * Full-width glyphs advance a whole em instead - see `isWideGlyph`.
  */
 const TITLE_CHAR_WIDTH = 8;
 const CAPTION_CHAR_WIDTH = 7;
@@ -52,10 +56,67 @@ export function socketCenter(node: Pick<LaidOutNode, "x" | "y" | "width">): Poin
   };
 }
 
-/** How many wrapped lines a plaque string needs, never fewer than Pixi produces. */
-export function wrappedLineCount(text: string, charWidth: number): number {
+const WIDE_GLYPH =
+  /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦]/;
+
+/**
+ * Whether a code point advances a full em rather than the proportional width a
+ * Latin glyph takes: CJK and full-width forms, plus everything above the BMP
+ * (emoji, CJK extensions), which is wide or close enough that reserving an em
+ * keeps the estimate on the safe side.
+ */
+function isWideGlyph(glyph: string): boolean {
+  const code = glyph.codePointAt(0);
+  if (code === undefined) return false;
+  return code > 0xffff || WIDE_GLYPH.test(glyph);
+}
+
+function textAdvance(text: string, charWidth: number, wideWidth: number): number {
+  let total = 0;
+  for (const glyph of text) total += isWideGlyph(glyph) ? wideWidth : charWidth;
+  return total;
+}
+
+/**
+ * How many wrapped lines a plaque string needs, never fewer than Pixi produces.
+ * Mirrors Pixi's greedy word wrap with `breakWords`: whole words move to the
+ * next line, and only a word too long for one line is broken inside.
+ */
+export function wrappedLineCount(
+  text: string,
+  charWidth: number,
+  wideWidth: number,
+): number {
   if (text.length === 0) return 0;
-  return Math.ceil((text.length * charWidth) / PLAQUE_WRAP_WIDTH);
+  let lines = 1;
+  let used = 0;
+  for (const word of text.split(/\s+/)) {
+    if (word.length === 0) continue;
+    const gap = used === 0 ? 0 : charWidth;
+    const width = textAdvance(word, charWidth, wideWidth);
+    if (used + gap + width <= PLAQUE_WRAP_WIDTH) {
+      used += gap + width;
+      continue;
+    }
+    if (used > 0) {
+      lines += 1;
+      used = 0;
+    }
+    if (width <= PLAQUE_WRAP_WIDTH) {
+      used = width;
+      continue;
+    }
+    for (const glyph of word) {
+      const advance = isWideGlyph(glyph) ? wideWidth : charWidth;
+      if (used + advance > PLAQUE_WRAP_WIDTH) {
+        lines += 1;
+        used = advance;
+      } else {
+        used += advance;
+      }
+    }
+  }
+  return lines;
 }
 
 /**
@@ -67,9 +128,16 @@ export function wrappedLineCount(text: string, charWidth: number): number {
 export function plaqueHeight(
   node: Pick<LaidOutNode, "title" | "caption">,
 ): number {
-  const titleLines = Math.max(1, wrappedLineCount(node.title, TITLE_CHAR_WIDTH));
+  const titleLines = Math.max(
+    1,
+    wrappedLineCount(node.title, TITLE_CHAR_WIDTH, PLAQUE_TITLE_FONT_SIZE),
+  );
   const captionLines = node.caption
-    ? wrappedLineCount(node.caption, CAPTION_CHAR_WIDTH)
+    ? wrappedLineCount(
+        node.caption,
+        CAPTION_CHAR_WIDTH,
+        PLAQUE_CAPTION_FONT_SIZE,
+      )
     : 0;
   const captionBlock =
     captionLines === 0 ? 0 : captionLines * CAPTION_LINE_HEIGHT + PLAQUE_CAPTION_GAP;
