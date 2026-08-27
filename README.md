@@ -37,7 +37,7 @@ The **talent tree** is the main workspace. Independent chains sit side by side; 
 4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
 5. **New node** / **Edit** set title, cost, and hard prerequisites. Directed cycles are rejected with the loop named.
 
-Drag empty space to pan. Scroll, or use `+` / `-` / `0`, to zoom and fit. Arrows move to a nearby node on the tree. `v` toggles the list.
+Drag anywhere on the board to pan. Scroll, or use `+` / `-` / `0`, to zoom and fit. Arrows move to a nearby node on the tree. `v` toggles the list.
 
 Keyboard: `j` / `k` move in list order, arrows move on the tree, `c` completes, `d` defers, `u` undefer, `n` new node, `e` edit, `v` tree/list, `?` help.
 

@@ -25,8 +25,18 @@ export function layoutGraph(model: GraphModel): LaidOutGraph {
   }
 
   const components = connectedComponents(model);
-  const laidOut = components.map((nodes) =>
-    layoutComponent(nodes, edgesFor(model.edges, new Set(nodes.map((node) => node.id)))),
+  const componentOf = new Map<string, number>();
+  components.forEach((nodes, index) => {
+    for (const node of nodes) componentOf.set(node.id, index);
+  });
+  const componentEdges: GraphEdge[][] = components.map(() => []);
+  for (const edge of model.edges) {
+    const index = componentOf.get(edge.from);
+    if (index === undefined || componentOf.get(edge.to) !== index) continue;
+    componentEdges[index]?.push(edge);
+  }
+  const laidOut = components.map((nodes, index) =>
+    layoutComponent(nodes, componentEdges[index] ?? []),
   );
 
   const packed = packComponents(laidOut);
@@ -91,21 +101,20 @@ function connectedComponents(model: GraphModel): GraphNode[][] {
   return components;
 }
 
-function edgesFor(edges: GraphEdge[], ids: Set<string>): GraphEdge[] {
-  return edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to));
-}
-
 function layoutComponent(nodes: GraphNode[], edges: GraphEdge[]): ComponentLayout {
   const ranks = assignRanks(nodes, edges);
   const order = orderRanks(nodes, edges, ranks);
   const positions = new Map<string, { x: number; y: number }>();
+  const indexById = new Map(nodes.map((node) => [node.id, node.originalIndex]));
+  const parentsById = new Map<string, string[]>();
+  for (const node of nodes) parentsById.set(node.id, []);
+  for (const edge of edges) parentsById.get(edge.to)?.push(edge.from);
 
   const maxRank = Math.max(...ranks.values(), 0);
   for (let rank = 0; rank <= maxRank; rank += 1) {
     const row = order[rank] ?? [];
     const desired = row.map((id, index) => {
-      const parents = edges.filter((edge) => edge.to === id).map((edge) => edge.from);
-      const parentXs = parents
+      const parentXs = (parentsById.get(id) ?? [])
         .map((parentId) => positions.get(parentId)?.x)
         .filter((x): x is number => x !== undefined);
       const x =
@@ -114,7 +123,9 @@ function layoutComponent(nodes: GraphNode[], edges: GraphEdge[]): ComponentLayou
           : index * (TREE_LAYOUT.nodeWidth + TREE_LAYOUT.columnGap);
       return { id, x };
     });
-    desired.sort((a, b) => a.x - b.x || compareId(a.id, b.id, nodes));
+    desired.sort(
+      (a, b) => a.x - b.x || (indexById.get(a.id) ?? 0) - (indexById.get(b.id) ?? 0),
+    );
     let cursor = 0;
     for (const item of desired) {
       const x = Math.max(item.x, cursor);
@@ -317,12 +328,6 @@ function placeEdge(edge: GraphEdge, from: LaidOutNode, to: LaidOutNode): LaidOut
 
 function mean(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function compareId(a: string, b: string, nodes: GraphNode[]): number {
-  const ia = nodes.find((node) => node.id === a)?.originalIndex ?? 0;
-  const ib = nodes.find((node) => node.id === b)?.originalIndex ?? 0;
-  return ia - ib;
 }
 
 export function nodeBoxesOverlap(a: LaidOutNode, b: LaidOutNode): boolean {

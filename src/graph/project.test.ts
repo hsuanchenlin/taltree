@@ -52,6 +52,22 @@ describe("graph projection state mapping", () => {
     expect(edge(graph.edges, "review", "send").kind).toBe("blocking");
   });
 
+  it("marks only edges leaving the selection as unlock edges", () => {
+    let plan = diamond(clock);
+    plan = unwrap(completeNode(plan, byTitle(plan, "Outline").id, clock));
+    const view = inspect(plan, clock);
+    const room = byTitle(view.plan, "Book the room");
+    const explained = unwrap(explainChoice(view.plan, room.id, clock));
+    const graph = projectGraph(view, {
+      selectedId: room.id,
+      immediateUnlockIds: explained.immediateUnlocks.map((ref) => ref.id),
+    });
+
+    expect(explained.immediateUnlocks.map((ref) => ref.id)).toEqual(["slides"]);
+    expect(edge(graph.edges, "room", "slides").kind).toBe("unlock");
+    expect(edge(graph.edges, "outline", "slides").kind).toBe("ready");
+  });
+
   it("draws ready edges from completed prerequisites and blocking edges from open ones", () => {
     let plan = diamond(clock);
     plan = unwrap(completeNode(plan, byTitle(plan, "Outline").id, clock));

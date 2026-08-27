@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildTalentTree, nearestNode } from "./graph";
 import { BudgetBar } from "./ui/BudgetBar";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -30,11 +30,18 @@ export function App() {
   const plannerRef = useRef(planner);
   plannerRef.current = planner;
   const [titleDraft, setTitleDraft] = useState(planner.plan.title);
-  const tree = buildTalentTree(planner.view, {
-    selectedId: planner.selectedId,
-    immediateUnlockIds:
-      planner.explanation?.immediateUnlocks.map((ref) => ref.id) ?? [],
-  });
+  const immediateUnlockIds = useMemo(
+    () => planner.explanation?.immediateUnlocks.map((ref) => ref.id) ?? [],
+    [planner.explanation],
+  );
+  const tree = useMemo(
+    () =>
+      buildTalentTree(planner.view, {
+        selectedId: planner.selectedId,
+        immediateUnlockIds,
+      }),
+    [planner.view, planner.selectedId, immediateUnlockIds],
+  );
   const treeRef = useRef(tree);
   treeRef.current = tree;
   const viewModeRef = useRef(viewMode);

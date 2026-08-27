@@ -380,7 +380,8 @@ button:disabled {
   outline-offset: 2px;
 }
 
-.tree-viewport.panning {
+.tree-viewport.panning,
+.tree-viewport.panning .tree-node {
   cursor: grabbing;
 }
 

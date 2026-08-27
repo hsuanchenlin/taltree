@@ -110,7 +110,7 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
       </table>
       <p>
         Status is named in words and marked with a glyph and a shape, not colour
-        alone. Drag empty space to pan the tree; scroll to zoom. The plan is saved
+        alone. Drag anywhere on the tree to pan; scroll to zoom. The plan is saved
         on this device as JSON. Export a copy; Taltree never uploads it.
       </p>
       <div className="detail-actions">

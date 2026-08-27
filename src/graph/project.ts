@@ -47,7 +47,7 @@ export function projectGraph(
       edges.push({
         from: prereqId,
         to: node.id,
-        kind: edgeKind(prereqId, node.id, nodeById, unlocks),
+        kind: edgeKind(prereqId, node.id, nodeById, unlocks, selection.selectedId),
       });
     }
   }
@@ -79,8 +79,9 @@ function edgeKind(
   toId: string,
   nodeById: Map<string, GraphNode>,
   unlocks: Set<string>,
+  selectedId: string | null,
 ): EdgeKind {
-  if (unlocks.has(toId)) return "unlock";
+  if (fromId === selectedId && unlocks.has(toId)) return "unlock";
   const from = nodeById.get(fromId);
   if (from?.kind === "completed") return "ready";
   return "blocking";

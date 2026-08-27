@@ -58,7 +58,7 @@ export interface LaidOutGraph {
 
 export const TREE_LAYOUT = {
   nodeWidth: 200,
-  nodeHeight: 108,
+  nodeHeight: 124,
   columnGap: 32,
   rankGap: 76,
   componentGap: 40,

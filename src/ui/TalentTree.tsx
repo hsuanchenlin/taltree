@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ChoiceExplanation } from "../domain/types";
-import type { LaidOutGraph, LaidOutNode } from "../graph";
+import type { Camera, LaidOutGraph, LaidOutNode, ViewportSize } from "../graph";
+import { ensureVisible, fitCamera, READABLE_CAMERA, zoomAbout } from "../graph";
 import { KIND_LABEL, pointsLabel } from "./format";
 import { KindMark } from "./glyphs";
 
@@ -11,13 +12,17 @@ interface TalentTreeProps {
   onSelect: (id: string) => void;
 }
 
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 2.4;
+const ZOOM_STEP = 1.15;
+const WHEEL_STEP = 1.08;
+const PAN_THRESHOLD = 4;
 
-interface Camera {
-  x: number;
-  y: number;
-  k: number;
+interface PanGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  camX: number;
+  camY: number;
+  moved: boolean;
 }
 
 export function TalentTree({
@@ -30,31 +35,54 @@ export function TalentTree({
   const viewportRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
+  const panRef = useRef<PanGesture | null>(null);
+  const suppressClickRef = useRef(false);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, k: 1 });
   const [panning, setPanning] = useState(false);
   const layoutKey = `${tree.width}x${tree.height}:${tree.nodes.map((node) => node.id).join(",")}`;
   const selectedId = tree.nodes.find((node) => node.selected)?.id ?? null;
+  const hasNodes = tree.nodes.length > 0;
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const selected = treeRef.current.nodes.find((node) => node.selected);
-    const readable: Camera = { x: 20, y: 20, k: 1 };
     if (!selected || viewport.clientWidth <= 0) {
-      setCamera(readable);
+      setCamera(READABLE_CAMERA);
       return;
     }
-    setCamera(ensureVisible(selected, readable, viewport.clientWidth, viewport.clientHeight));
+    setCamera(ensureVisible(selected, READABLE_CAMERA, sizeOf(viewport)));
   }, [layoutKey]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     const node = treeRef.current.nodes.find((item) => item.id === selectedId);
     if (!viewport || !node) return;
-    setCamera((current) =>
-      ensureVisible(node, current, viewport.clientWidth, viewport.clientHeight),
+    setCamera((current) => ensureVisible(node, current, sizeOf(viewport)));
+    if (!viewport.contains(document.activeElement)) return;
+    const button = viewport.querySelector<HTMLButtonElement>(
+      '.tree-node[data-selected="true"]',
     );
+    if (button && button !== document.activeElement) {
+      button.focus({ preventScroll: true });
+    }
   }, [selectedId]);
+
+  const zoomBy = useCallback((factor: number, focus?: { x: number; y: number }) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const point = focus ?? {
+      x: viewport.clientWidth / 2,
+      y: viewport.clientHeight / 2,
+    };
+    setCamera((current) => zoomAbout(current, factor, point));
+  }, []);
+
+  const fitToViewport = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    setCamera(fitCamera(treeRef.current, sizeOf(viewport)));
+  }, []);
 
   useEffect(() => {
     const stage = viewportRef.current;
@@ -64,27 +92,51 @@ export function TalentTree({
       if (!current) return;
       event.preventDefault();
       const rect = current.getBoundingClientRect();
-      zoomBy(event.deltaY < 0 ? 1.08 : 1 / 1.08, {
+      zoomBy(event.deltaY < 0 ? WHEEL_STEP : 1 / WHEEL_STEP, {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       });
     }
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
-  }, [tree.nodes.length]);
+  }, [hasNodes, zoomBy]);
 
-  function zoomBy(factor: number, origin?: { x: number; y: number }) {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const cx = origin?.x ?? viewport.clientWidth / 2;
-    const cy = origin?.y ?? viewport.clientHeight / 2;
-    setCamera((current) => {
-      const k = clamp(current.k * factor, MIN_ZOOM, MAX_ZOOM);
-      const worldX = (cx - current.x) / current.k;
-      const worldY = (cy - current.y) / current.k;
-      return { k, x: cx - worldX * k, y: cy - worldY * k };
-    });
-  }
+  useEffect(() => {
+    function endGesture(pan: PanGesture) {
+      panRef.current = null;
+      suppressClickRef.current = pan.moved;
+      setPanning(false);
+    }
+    function onMove(event: PointerEvent) {
+      const pan = panRef.current;
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      if (event.pointerType === "mouse" && event.buttons === 0) {
+        endGesture(pan);
+        return;
+      }
+      const dx = event.clientX - pan.startX;
+      const dy = event.clientY - pan.startY;
+      if (!pan.moved) {
+        if (Math.abs(dx) < PAN_THRESHOLD && Math.abs(dy) < PAN_THRESHOLD) return;
+        pan.moved = true;
+        setPanning(true);
+      }
+      setCamera((current) => ({ ...current, x: pan.camX + dx, y: pan.camY + dy }));
+    }
+    function onEnd(event: PointerEvent) {
+      const pan = panRef.current;
+      if (!pan || event.pointerId !== pan.pointerId) return;
+      endGesture(pan);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, []);
 
   const spendLine = spendCopy(remaining, explanation);
 
@@ -95,20 +147,13 @@ export function TalentTree({
           {spendLine}
         </p>
         <div className="tree-zoom" role="group" aria-label="Tree navigation">
-          <button type="button" onClick={() => zoomBy(1 / 1.15)}>
+          <button type="button" onClick={() => zoomBy(1 / ZOOM_STEP)}>
             Zoom out
           </button>
-          <button type="button" onClick={() => zoomBy(1.15)}>
+          <button type="button" onClick={() => zoomBy(ZOOM_STEP)}>
             Zoom in
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              const viewport = viewportRef.current;
-              if (!viewport) return;
-              setCamera(fitCamera(tree, viewport.clientWidth, viewport.clientHeight));
-            }}
-          >
+          <button type="button" onClick={fitToViewport}>
             Fit
           </button>
         </div>
@@ -128,9 +173,10 @@ export function TalentTree({
         </li>
       </ul>
       <p className="sr-only">
-        Directed talent tree. Prerequisites sit above what they unlock. Drag empty
-        space to pan, scroll to zoom, and use arrow keys to move to a nearby node.
-        The list view remains available as a keyboard-operable alternative.
+        Directed talent tree. Prerequisites sit above what they unlock. Drag
+        anywhere on the board to pan, scroll to zoom, and use arrow keys to move
+        to a nearby node. The list view remains available as a keyboard-operable
+        alternative.
       </p>
       {tree.nodes.length === 0 ? (
         <div className="tree-empty">
@@ -144,44 +190,37 @@ export function TalentTree({
           onKeyDown={(event) => {
             if (event.key === "+" || event.key === "=") {
               event.preventDefault();
-              zoomBy(1.15);
+              zoomBy(ZOOM_STEP);
             } else if (event.key === "-" || event.key === "_") {
               event.preventDefault();
-              zoomBy(1 / 1.15);
+              zoomBy(1 / ZOOM_STEP);
             } else if (event.key === "0") {
               event.preventDefault();
-              const viewport = viewportRef.current;
-              if (!viewport) return;
-              setCamera(fitCamera(tree, viewport.clientWidth, viewport.clientHeight));
+              fitToViewport();
             }
           }}
           onPointerDown={(event) => {
-            if (event.button !== 0) return;
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            if (panRef.current) return;
             const target = event.target;
-            if (
-              target instanceof Element &&
-              target.closest("button, a, input, select, textarea")
-            ) {
+            if (target instanceof Element && target.closest("a, input, select, textarea")) {
               return;
             }
-            const origin = { x: event.clientX, y: event.clientY, camX: camera.x, camY: camera.y };
-            const viewport = event.currentTarget;
-            viewport.setPointerCapture(event.pointerId);
-            setPanning(true);
-            function onMove(move: PointerEvent) {
-              setCamera((current) => ({
-                ...current,
-                x: origin.camX + (move.clientX - origin.x),
-                y: origin.camY + (move.clientY - origin.y),
-              }));
-            }
-            function onUp() {
-              viewport.removeEventListener("pointermove", onMove);
-              viewport.removeEventListener("pointerup", onUp);
-              setPanning(false);
-            }
-            viewport.addEventListener("pointermove", onMove);
-            viewport.addEventListener("pointerup", onUp);
+            suppressClickRef.current = false;
+            panRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              camX: camera.x,
+              camY: camera.y,
+              moved: false,
+            };
+          }}
+          onClickCapture={(event) => {
+            if (!suppressClickRef.current) return;
+            suppressClickRef.current = false;
+            event.preventDefault();
+            event.stopPropagation();
           }}
         >
           <div
@@ -250,6 +289,7 @@ export function TalentTree({
                 id={`tree-node-${node.id}`}
                 className={nodeClass(node)}
                 style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
+                tabIndex={node.selected ? 0 : -1}
                 data-node-id={node.id}
                 data-kind={node.kind}
                 data-selected={node.selected ? "true" : "false"}
@@ -273,10 +313,14 @@ export function TalentTree({
         </div>
       )}
       <p className="tree-hint quiet">
-        Drag empty space to pan. Scroll, or use zoom controls, when the tree is denser than the board.
+        Drag the board to pan. Scroll, or use the zoom controls, when the tree is denser than the board.
       </p>
     </section>
   );
+}
+
+function sizeOf(viewport: HTMLElement): ViewportSize {
+  return { width: viewport.clientWidth, height: viewport.clientHeight };
 }
 
 function nodeClass(node: LaidOutNode): string {
@@ -317,44 +361,4 @@ function spendCopy(remaining: number, explanation: ChoiceExplanation | null): st
     return `${remainingText}. Completing this spends ${pointsLabel(explanation.cost)} and exceeds the budget by ${pointsLabel(explanation.overBy)}. ${unlock}`;
   }
   return `${remainingText}. Completing this spends ${pointsLabel(explanation.cost)}, leaving ${pointsLabel(after)}. ${unlock}`;
-}
-
-function fitCamera(tree: LaidOutGraph, viewW: number, viewH: number): Camera {
-  if (viewW <= 0 || viewH <= 0) return { x: 0, y: 0, k: 1 };
-  const pad = 16;
-  const k = clamp(
-    Math.min((viewW - pad * 2) / Math.max(tree.width, 1), (viewH - pad * 2) / Math.max(tree.height, 1), 1),
-    MIN_ZOOM,
-    MAX_ZOOM,
-  );
-  return {
-    k,
-    x: (viewW - tree.width * k) / 2,
-    y: (viewH - tree.height * k) / 2,
-  };
-}
-
-function ensureVisible(
-  node: LaidOutNode,
-  camera: Camera,
-  viewW: number,
-  viewH: number,
-): Camera {
-  const margin = 20;
-  const sx = camera.x + node.x * camera.k;
-  const sy = camera.y + node.y * camera.k;
-  const sw = node.width * camera.k;
-  const sh = node.height * camera.k;
-  let x = camera.x;
-  let y = camera.y;
-  if (sx < margin) x += margin - sx;
-  if (sy < margin) y += margin - sy;
-  if (sx + sw > viewW - margin) x -= sx + sw - (viewW - margin);
-  if (sy + sh > viewH - margin) y -= sy + sh - (viewH - margin);
-  if (x === camera.x && y === camera.y) return camera;
-  return { ...camera, x, y };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
