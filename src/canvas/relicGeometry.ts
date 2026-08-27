@@ -184,9 +184,9 @@ export function plaqueScale(
     PLAQUE_MAX_SCALE,
     LOD_READABLE_K / Math.max(cameraK, 0.01),
   );
-  // A tall plaque grown by the zoom cap would span several ranks of the board,
-  // so its scaled height is also capped at one rank pitch.
-  const heightScale = RANK_PITCH / plaqueHeight(node);
+  // A tall plaque grown by the zoom cap would reach into the rank below, so
+  // its scaled height is capped at the space left beneath its top edge.
+  const heightScale = PLAQUE_MAX_HEIGHT / plaqueHeight(node);
   return Math.max(1, Math.min(zoomScale, heightScale));
 }
 

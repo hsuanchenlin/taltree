@@ -320,7 +320,7 @@ describe("plaqueScale (LOD legibility)", () => {
     expect(plaqueScale(makeNode(), 0.01)).toBe(PLAQUE_MAX_SCALE);
   });
 
-  it("keeps a scaled plaque within one rank pitch, however tall it is", () => {
+  it("keeps a scaled plaque above the next rank, however tall it is", () => {
     const tall = makeNode({
       title: "A deliberately long relic title that wraps onto several lines",
       caption: "With a caption long enough to wrap across more lines as well",
@@ -328,8 +328,12 @@ describe("plaqueScale (LOD legibility)", () => {
     expect(plaqueHeight(tall)).toBeGreaterThan(RANK_PITCH / PLAQUE_MAX_SCALE);
     const scale = plaqueScale(tall, 0.01);
     expect(scale).toBeLessThan(PLAQUE_MAX_SCALE);
-    expect(plaqueHeight(tall) * scale).toBeCloseTo(RANK_PITCH, 10);
-    expect(plaqueHitBox(tall, 0.01).height).toBeCloseTo(RANK_PITCH, 10);
+    const availableHeight = RANK_PITCH - PLAQUE_TOP;
+    expect(plaqueHeight(tall) * scale).toBeCloseTo(availableHeight, 10);
+    expect(plaqueHitBox(tall, 0.01).height).toBeCloseTo(availableHeight, 10);
+    expect(plaqueHitBox(tall, 0.01).y + availableHeight).toBe(
+      tall.y + RANK_PITCH,
+    );
   });
 
   it("never counter-scales a plaque below its laid-out size", () => {

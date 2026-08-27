@@ -348,6 +348,14 @@ export function TalentTree({
     [applyCamera, ensureMotionLoop, reducedMotion, stopMotion],
   );
 
+  const activateNode = useCallback(
+    (node: LaidOutNode) => {
+      onSelect(node.id);
+      focusNode(node);
+    },
+    [focusNode, onSelect],
+  );
+
   // The signal is owned by App and outlives this component, so only a change
   // seen by *this* mount is a focus request; a remount inherits the last value
   // without replaying its animation.
@@ -500,6 +508,11 @@ export function TalentTree({
         !reducedMotion &&
         pointersRef.current.size === 0
       ) {
+        pan.samples.push({
+          x: event.clientX,
+          y: event.clientY,
+          t: event.timeStamp,
+        });
         const velocity = dragVelocity(pan.samples);
         if (shouldGlide(velocity)) {
           motionRef.current.glide = velocity;
@@ -511,7 +524,6 @@ export function TalentTree({
         !pan.moved &&
         event.type === "pointerup" &&
         event.pointerType !== "mouse" &&
-        pixiLive &&
         viewport
       ) {
         onDoubleTap(event, viewport);
@@ -544,8 +556,7 @@ export function TalentTree({
         hoveredIdRef.current,
       );
       if (hit) {
-        onSelect(hit.id);
-        focusNode(hit);
+        activateNode(hit);
       }
     }
     window.addEventListener("pointermove", onMove);
@@ -559,10 +570,8 @@ export function TalentTree({
   }, [
     applyCamera,
     applyZoomTarget,
+    activateNode,
     ensureMotionLoop,
-    focusNode,
-    onSelect,
-    pixiLive,
     reducedMotion,
     stopMotion,
   ]);
@@ -660,7 +669,6 @@ export function TalentTree({
             };
           }}
           onDoubleClick={(event) => {
-            if (!pixiLive) return;
             const viewport = viewportRef.current;
             if (!viewport) return;
             const rect = viewport.getBoundingClientRect();
@@ -670,10 +678,7 @@ export function TalentTree({
               cameraRef.current,
               hoveredId,
             );
-            if (hit) {
-              onSelect(hit.id);
-              focusNode(hit);
-            }
+            if (hit) activateNode(hit);
           }}
           onPointerMove={(event) => {
             if (!pixiLive || panRef.current?.moved) {
