@@ -64,6 +64,8 @@ The plan is a version 1 JSON document stored in this browser under `localStorage
 
 `deferredOn` is the local `YYYY-MM-DD` the node was deferred. After that day it is eligible again if its prerequisites are done. Changing `activeDate` in the file is unnecessary: opening the app on a new day resets `spentToday` and expires leftover budget.
 
+If a saved plan cannot be read, Taltree loads the demo instead but keeps the unreadable data on this device under `localStorage` key `taltree.plan.v1.broken` and offers **Download the unreadable file**, so nothing is lost. Importing a plan or loading the demo from the toolbar clears that backup.
+
 ## Scope (Slice 0)
 
 This slice is the daily-budget graph and unlock explanations. It does not include syllabus import, Obsidian, LLM extraction, collaboration, accounts, XP, streaks, avatars, push notifications, or calendar auto-scheduling.
