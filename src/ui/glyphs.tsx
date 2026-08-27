@@ -1,11 +1,5 @@
 import type { NodeKind } from "../domain/types";
-
-const KIND_LABEL: Record<NodeKind, string> = {
-  eligible: "Eligible",
-  blocked: "Blocked",
-  deferred: "Deferred today",
-  completed: "Completed",
-};
+import { KIND_LABEL } from "./format";
 
 export function KindMark({ kind }: { kind: NodeKind }) {
   return (

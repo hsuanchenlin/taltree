@@ -1,3 +1,12 @@
+import type { NodeKind } from "../domain/types";
+
+export const KIND_LABEL: Record<NodeKind, string> = {
+  eligible: "Eligible",
+  blocked: "Blocked",
+  deferred: "Deferred today",
+  completed: "Completed",
+};
+
 export function formatDay(isoDate: string): string {
   const [year, month, day] = isoDate.split("-").map(Number);
   if (!year || !month || !day) return isoDate;

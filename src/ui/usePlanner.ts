@@ -75,13 +75,15 @@ export function usePlanner() {
     savePlan(localStorage, synced);
   }, [plan, clock]);
 
-  const view = inspect(plan, clock);
-  const listings = orderedListings(view.listings);
+  const view = useMemo(() => inspect(plan, clock), [plan, clock]);
+  const listings = useMemo(() => orderedListings(view.listings), [view]);
   const selected =
     listings.find((item) => item.node.id === selectedId) ?? listings[0] ?? null;
-  const explanation: ChoiceExplanation | null = selected
-    ? resultValue(explainChoice(view.plan, selected.node.id, clock))
-    : null;
+  const explanation: ChoiceExplanation | null = useMemo(
+    () =>
+      selected ? resultValue(explainChoice(view.plan, selected.node.id, clock)) : null,
+    [view.plan, selected, clock],
+  );
 
   const commit = useCallback(
     (result: Result<Plan>, nextId?: string | null) => {
@@ -100,6 +102,7 @@ export function usePlanner() {
 
   return {
     clock,
+    view,
     plan: view.plan,
     remaining: view.remaining,
     listings,
