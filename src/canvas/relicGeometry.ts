@@ -17,7 +17,7 @@ export const PLAQUE_OFFSET_Y = PLAQUE_TOP - SOCKET_TOP - SOCKET_RADIUS;
 /** At or above this zoom every node shows its full plaque; below it only highlighted nodes do. */
 export const LOD_READABLE_K = 0.85;
 /** Most a highlighted plaque may grow past its laid-out size at very low zoom. */
-export const PLAQUE_MAX_SCALE = 2.5;
+export const PLAQUE_MAX_SCALE = 3.4;
 
 export const PLAQUE_PAD_TOP = 4;
 export const PLAQUE_PAD_BOTTOM = 5;
@@ -176,7 +176,7 @@ export function plaqueBox(
  * across the ranks beneath it.
  */
 export function plaqueScale(
-  node: Pick<LaidOutNode, "title" | "caption">,
+  _node: Pick<LaidOutNode, "title" | "caption">,
   cameraK: number,
 ): number {
   if (cameraK >= LOD_READABLE_K) return 1;
@@ -184,10 +184,17 @@ export function plaqueScale(
     PLAQUE_MAX_SCALE,
     LOD_READABLE_K / Math.max(cameraK, 0.01),
   );
-  // A tall plaque grown by the zoom cap would reach into the rank below, so
-  // its scaled height is capped at the space left beneath its top edge.
-  const heightScale = PLAQUE_MAX_HEIGHT / plaqueHeight(node);
-  return Math.max(1, Math.min(zoomScale, heightScale));
+  return Math.max(1, zoomScale);
+}
+
+export function renderedPlaqueHeight(
+  node: Pick<LaidOutNode, "title" | "caption">,
+  cameraK: number,
+): number {
+  return Math.min(
+    plaqueHeight(node),
+    PLAQUE_MAX_HEIGHT / plaqueScale(node, cameraK),
+  );
 }
 
 /**
@@ -200,8 +207,8 @@ export function plaqueHitBox(
   node: Pick<LaidOutNode, "x" | "y" | "width" | "title" | "caption">,
   cameraK: number,
 ): Rect {
-  const box = plaqueBox(node);
   const scale = plaqueScale(node, cameraK);
+  const box = { ...plaqueBox(node), height: renderedPlaqueHeight(node, cameraK) };
   if (scale === 1) return box;
   const anchorX = node.x + node.width / 2;
   return {

@@ -17,9 +17,9 @@ import {
   PLAQUE_TITLE_GAP,
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
-  plaqueHeight,
   plaqueScale,
   plaqueVisible,
+  renderedPlaqueHeight,
   SOCKET_RADIUS,
   socketCenter,
 } from "./relicGeometry";
@@ -82,6 +82,7 @@ interface NodeView {
   plaqueAlpha: number;
   /** Opacity the plaque is fading toward (0 or 1). */
   plaqueTarget: number;
+  renderedPlaqueHeight: number;
 }
 
 function edgeSignatureOf(edges: readonly LaidOutEdge[]): string {
@@ -94,11 +95,13 @@ function plaqueStackHeight(view: NodeView): number {
   const caption = view.plaqueCaption.visible
     ? view.plaqueCaption.height + PLAQUE_CAPTION_GAP
     : 0;
+  const sub = view.plaqueSub.visible
+    ? view.plaqueSub.height + PLAQUE_TITLE_GAP
+    : 0;
   return (
     PLAQUE_PAD_TOP +
     view.plaqueTitle.height +
-    PLAQUE_TITLE_GAP +
-    view.plaqueSub.height +
+    sub +
     caption +
     PLAQUE_PAD_BOTTOM
   );
@@ -109,13 +112,17 @@ function trimTail(text: string): string {
 }
 
 /**
- * Shortens plaque text until it fits the height `plaqueHeight` reserves for the
+ * Shortens plaque text until it fits the allocated plaque height for the
  * node, so a very long title can neither spill past the plaque nor push the
  * drawn plaque beyond the box the tree hit-tests clicks against.
  */
 function elideToFit(view: NodeView, node: LaidOutNode, height: number): void {
   let title = node.title;
   let caption = node.caption ?? "";
+  if (plaqueStackHeight(view) > height && view.plaqueCaption.visible) {
+    view.plaqueCaption.visible = false;
+  }
+  if (plaqueStackHeight(view) > height) view.plaqueSub.visible = false;
   for (let step = 0; step < ELIDE_STEPS; step += 1) {
     if (plaqueStackHeight(view) <= height) return;
     if (view.plaqueCaption.visible && caption.length > title.length) {
@@ -336,6 +343,7 @@ export class RelicWorld {
       plaqueCaption,
       plaqueAlpha: -1,
       plaqueTarget: 0,
+      renderedPlaqueHeight: 0,
     };
   }
 
@@ -354,20 +362,21 @@ export class RelicWorld {
         .stroke({ width: 3, color: SELECTION_RING });
     }
 
-    view.plaqueTitle.text = node.title;
-    view.plaqueSub.text = `${pointsLabel(node.cost)} · ${KIND_LABEL[node.kind]}`;
     if (node.caption) {
-      view.plaqueCaption.visible = true;
-      view.plaqueCaption.text = node.caption;
       view.plaqueCaption.style.fill = node.captionTone
         ? CAPTION_COLORS[node.captionTone]
         : 0xc7bdab;
-    } else {
-      view.plaqueCaption.visible = false;
-      view.plaqueCaption.text = "";
     }
 
-    const height = plaqueHeight(node);
+    this.layoutPlaque(view, node, renderedPlaqueHeight(node, this.cameraK));
+  }
+
+  private layoutPlaque(view: NodeView, node: LaidOutNode, height: number): void {
+    view.plaqueTitle.text = node.title;
+    view.plaqueSub.visible = true;
+    view.plaqueSub.text = `${pointsLabel(node.cost)} · ${KIND_LABEL[node.kind]}`;
+    view.plaqueCaption.visible = Boolean(node.caption);
+    view.plaqueCaption.text = node.caption ?? "";
     elideToFit(view, node, height);
     view.plaqueTitle.position.set(0, PLAQUE_PAD_TOP);
     const subY = PLAQUE_PAD_TOP + view.plaqueTitle.height + PLAQUE_TITLE_GAP;
@@ -382,6 +391,7 @@ export class RelicWorld {
       .roundRect(-PLAQUE_WIDTH / 2, 0, PLAQUE_WIDTH, height, 6)
       .fill({ color: 0x0c1016, alpha: 0.72 })
       .stroke({ width: 1, color: 0x2a2f38, alpha: 0.9 });
+    view.renderedPlaqueHeight = height;
   }
 
   /**
@@ -393,6 +403,10 @@ export class RelicWorld {
   private updatePlaques(): void {
     for (const view of this.nodes.values()) {
       const visible = plaqueVisible(view.node, this.cameraK, this.hoveredId);
+      const height = renderedPlaqueHeight(view.node, this.cameraK);
+      if (height !== view.renderedPlaqueHeight) {
+        this.layoutPlaque(view, view.node, height);
+      }
       view.plaque.scale.set(plaqueScale(view.node, this.cameraK));
       const target = visible ? 1 : 0;
       view.plaqueTarget = target;

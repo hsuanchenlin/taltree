@@ -13,12 +13,14 @@ interface TalentTreeDomWorldProps {
   tree: LaidOutGraph;
   camera: Camera;
   onSelect: (id: string) => void;
+  onActivate: (node: LaidOutNode) => void;
 }
 
 export function TalentTreeDomWorld({
   tree,
   camera,
   onSelect,
+  onActivate,
 }: TalentTreeDomWorldProps) {
   const markerId = useId().replace(/:/g, "");
   return (
@@ -97,6 +99,10 @@ export function TalentTreeDomWorld({
           aria-current={node.selected ? "true" : undefined}
           aria-label={nodeLabel(node)}
           onClick={() => onSelect(node.id)}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            onActivate(node);
+          }}
         >
           <span className="tree-node-head">
             <KindMark kind={node.kind} />

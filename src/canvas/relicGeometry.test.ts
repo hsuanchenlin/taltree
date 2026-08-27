@@ -17,6 +17,7 @@ import {
   PLAQUE_WRAP_WIDTH,
   plaqueVisible,
   RANK_PITCH,
+  renderedPlaqueHeight,
   socketCenter,
   SOCKET_RADIUS,
   visualSignature,
@@ -320,16 +321,19 @@ describe("plaqueScale (LOD legibility)", () => {
     expect(plaqueScale(makeNode(), 0.01)).toBe(PLAQUE_MAX_SCALE);
   });
 
-  it("keeps a scaled plaque above the next rank, however tall it is", () => {
+  it("compacts a scaled plaque above the next rank without shrinking its text", () => {
     const tall = makeNode({
       title: "A deliberately long relic title that wraps onto several lines",
       caption: "With a caption long enough to wrap across more lines as well",
     });
     expect(plaqueHeight(tall)).toBeGreaterThan(RANK_PITCH / PLAQUE_MAX_SCALE);
     const scale = plaqueScale(tall, 0.01);
-    expect(scale).toBeLessThan(PLAQUE_MAX_SCALE);
+    expect(scale).toBe(PLAQUE_MAX_SCALE);
     const availableHeight = RANK_PITCH - PLAQUE_TOP;
-    expect(plaqueHeight(tall) * scale).toBeCloseTo(availableHeight, 10);
+    expect(renderedPlaqueHeight(tall, 0.01) * scale).toBeCloseTo(
+      availableHeight,
+      10,
+    );
     expect(plaqueHitBox(tall, 0.01).height).toBeCloseTo(availableHeight, 10);
     expect(plaqueHitBox(tall, 0.01).y + availableHeight).toBe(
       tall.y + RANK_PITCH,

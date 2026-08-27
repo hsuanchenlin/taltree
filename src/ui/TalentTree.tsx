@@ -548,6 +548,15 @@ export function TalentTree({
         return;
       }
       lastTapRef.current = null;
+      const target = event.target;
+      if (target instanceof Element) {
+        const id = target.closest<HTMLElement>("[data-node-id]")?.dataset.nodeId;
+        const node = treeRef.current.nodes.find((item) => item.id === id);
+        if (node) {
+          activateNode(node);
+          return;
+        }
+      }
       const rect = viewport.getBoundingClientRect();
       const hit = hitTestNode(
         treeRef.current.nodes,
@@ -721,7 +730,12 @@ export function TalentTree({
             <PixiErrorBoundary
               onFailed={onPixiFailed}
               fallback={
-                <TalentTreeDomWorld tree={tree} camera={camera} onSelect={onSelect} />
+                <TalentTreeDomWorld
+                  tree={tree}
+                  camera={camera}
+                  onSelect={onSelect}
+                  onActivate={activateNode}
+                />
               }
             >
               <Suspense
@@ -739,7 +753,12 @@ export function TalentTree({
               </Suspense>
             </PixiErrorBoundary>
           ) : (
-            <TalentTreeDomWorld tree={tree} camera={camera} onSelect={onSelect} />
+            <TalentTreeDomWorld
+              tree={tree}
+              camera={camera}
+              onSelect={onSelect}
+              onActivate={activateNode}
+            />
           )}
         </div>
       )}
