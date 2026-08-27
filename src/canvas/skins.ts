@@ -106,7 +106,8 @@ function bake(renderer: Renderer, draw: (g: Graphics) => void): Texture {
   return texture;
 }
 
-function drawBlocked(g: Graphics): void {
+/** Exported so its subpaths can be asserted on without a renderer. */
+export function drawBlocked(g: Graphics): void {
   g.circle(CENTER, CENTER, RIM_RADIUS).fill(COLORS.granite);
   speckle(g, 20260827);
   g.circle(CENTER, CENTER, RIM_RADIUS - 5).stroke({
@@ -115,7 +116,10 @@ function drawBlocked(g: Graphics): void {
     alpha: 0.8,
   });
   g.circle(CENTER, CENTER, RIM_RADIUS).stroke({ width: 8, color: COLORS.iron });
-  // Lock glyph: shackle arc + body.
+  // Lock glyph: shackle arc + body. `beginPath` is required - a bare `arc`
+  // appends to the subpath the previous `stroke` left open, which strokes a
+  // stray connector from that point across the granite face into the shackle.
+  g.beginPath();
   g.arc(CENTER, CENTER - 4, 10, Math.PI, Math.PI * 2).stroke({
     width: 5,
     color: COLORS.lockGlyph,
@@ -177,6 +181,10 @@ function drawDeferred(g: Graphics): void {
   g.roundRect(CENTER - 13, CENTER - 15, 9, 30, 2).fill(COLORS.bars);
   g.roundRect(CENTER + 4, CENTER - 15, 9, 30, 2).fill(COLORS.bars);
 }
+
+/** Centre and radius of the frame every skin bakes into, for the same test. */
+export const SKIN_ART_CENTER = CENTER;
+export const SKIN_FRAME_RADIUS = FRAME_RADIUS;
 
 export function bakeRelicSkins(renderer: Renderer): RelicSkins {
   return {
