@@ -1,7 +1,5 @@
-import { Application } from "@pixi/react";
-import type { Application as PixiApplication } from "pixi.js";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { isRendererInitFailure } from "../canvas/webgl";
+import { createRoot } from "@pixi/react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RelicWorld } from "../canvas/world";
 import type { Camera, LaidOutGraph } from "../graph";
 
@@ -14,20 +12,15 @@ import type { Camera, LaidOutGraph } from "../graph";
 interface TalentTreePixiProps {
   tree: LaidOutGraph;
   camera: Camera;
+  hoveredId: string | null;
 }
 
 /**
- * `@pixi/react` awaits `app.init()` inside a layout effect and never catches
- * it, so a rejected init would silently leave a blank slab forever. We watch
- * for the rejection and, as a backstop, for an init that simply never lands,
- * then rethrow during render so `PixiErrorBoundary` swaps in the DOM world.
- *
- * A rejection only demotes the slab if it looks like a renderer failure and
- * the stage is still uninitialised after a grace period, so a stray rejection
- * that merely races a healthy init cannot cost the user the WebGL renderer.
+ * The public root API returns the exact render promise that owns `app.init()`.
+ * Catching that promise keeps failure handling scoped to this canvas instead
+ * of inferring ownership from page-global rejection text.
  */
 const INIT_TIMEOUT_MS = 10_000;
-const INIT_GRACE_MS = 750;
 
 function resolveResolution(): number {
   if (typeof window === "undefined") return 1;
@@ -41,55 +34,62 @@ function resolveResolution(): number {
   return constrained ? 1 : Math.min(window.devicePixelRatio || 1, 2);
 }
 
-export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
-  const hostRef = useRef<HTMLDivElement>(null);
+export default function TalentTreePixi({
+  tree,
+  camera,
+  hoveredId,
+}: TalentTreePixiProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<RelicWorld | null>(null);
-  const initialisedRef = useRef(false);
-  const [initialised, setInitialised] = useState(false);
   const [initFailure, setInitFailure] = useState<Error | null>(null);
-  const latestRef = useRef({ tree, camera });
-  latestRef.current = { tree, camera };
+  const latestRef = useRef({ tree, camera, hoveredId });
+  latestRef.current = { tree, camera, hoveredId };
 
-  const handleInit = useCallback((app: PixiApplication) => {
-    initialisedRef.current = true;
-    const world = new RelicWorld(app);
-    worldRef.current = world;
-    world.update(latestRef.current.tree);
-    world.setCamera(latestRef.current.camera);
-    setInitialised(true);
-  }, []);
-
-  useEffect(() => {
-    if (initialised) return;
-    const timers: number[] = [];
-    function fail(reason: unknown) {
-      if (initialisedRef.current) return;
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (active) {
+        setInitFailure(
+          new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`),
+        );
+      }
+    }, INIT_TIMEOUT_MS);
+    const root = createRoot(canvas, {
+      onInit(app) {
+        if (!active) return;
+        window.clearTimeout(timer);
+        const world = new RelicWorld(app);
+        worldRef.current = world;
+        world.update(latestRef.current.tree);
+        world.setCamera(latestRef.current.camera);
+        world.setHoveredId(latestRef.current.hoveredId);
+      },
+    });
+    const init = root.render(null, {
+      resizeTo: canvas.parentElement,
+      antialias: false,
+      roundPixels: true,
+      preference: "webgl",
+      background: 0x0c1016,
+      resolution: resolveResolution(),
+    }) as Promise<unknown>;
+    void init.catch((reason: unknown) => {
+      if (!active) return;
+      window.clearTimeout(timer);
       setInitFailure(
         reason instanceof Error ? reason : new Error(String(reason)),
       );
-    }
-    function onRejection(event: PromiseRejectionEvent) {
-      if (initialisedRef.current) return;
-      if (!isRendererInitFailure(event.reason)) return;
-      const { reason } = event;
-      timers.push(window.setTimeout(() => fail(reason), INIT_GRACE_MS));
-    }
-    timers.push(
-      window.setTimeout(() => {
-        fail(new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`));
-      }, INIT_TIMEOUT_MS),
-    );
-    window.addEventListener("unhandledrejection", onRejection);
+    });
     return () => {
-      for (const timer of timers) window.clearTimeout(timer);
-      window.removeEventListener("unhandledrejection", onRejection);
-    };
-  }, [initialised]);
-
-  useEffect(() => {
-    return () => {
+      active = false;
+      window.clearTimeout(timer);
       worldRef.current?.destroy();
       worldRef.current = null;
+      const app = root.applicationState.app;
+      if (root.applicationState.isInitialised) app.destroy(true);
+      else void init.then(() => app.destroy(true), () => undefined);
     };
   }, []);
 
@@ -101,19 +101,15 @@ export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
     worldRef.current?.setCamera(camera);
   }, [camera]);
 
+  useEffect(() => {
+    worldRef.current?.setHoveredId(hoveredId);
+  }, [hoveredId]);
+
   if (initFailure) throw initFailure;
 
   return (
-    <div ref={hostRef} className="tree-pixi-host">
-      <Application
-        resizeTo={hostRef}
-        antialias={false}
-        roundPixels
-        preference="webgl"
-        background={0x0c1016}
-        resolution={resolveResolution()}
-        onInit={handleInit}
-      />
+    <div className="tree-pixi-host">
+      <canvas ref={canvasRef} />
     </div>
   );
 }

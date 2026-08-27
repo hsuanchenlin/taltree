@@ -83,6 +83,7 @@ export function TalentTree({
   const suppressClickRef = useRef(false);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, k: 1 });
   const [panning, setPanning] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [pixiFailed, setPixiFailed] = useState(false);
   const layoutKey = `${tree.width}x${tree.height}:${tree.nodes.map((node) => node.id).join(",")}`;
   const selectedId = tree.nodes.find((node) => node.selected)?.id ?? null;
@@ -291,6 +292,23 @@ export function TalentTree({
               moved: false,
             };
           }}
+          onPointerMove={(event) => {
+            if (!pixiLive || panRef.current?.moved) {
+              setHoveredId(null);
+              return;
+            }
+            const viewport = viewportRef.current;
+            if (!viewport) return;
+            const rect = viewport.getBoundingClientRect();
+            const hit = hitTestNode(
+              treeRef.current.nodes,
+              { x: event.clientX - rect.left, y: event.clientY - rect.top },
+              camera,
+              hoveredId,
+            );
+            setHoveredId(hit?.id ?? null);
+          }}
+          onPointerLeave={() => setHoveredId(null)}
           onClickCapture={(event) => {
             if (!suppressClickRef.current) return;
             suppressClickRef.current = false;
@@ -306,6 +324,7 @@ export function TalentTree({
               treeRef.current.nodes,
               { x: event.clientX - rect.left, y: event.clientY - rect.top },
               camera,
+              hoveredId,
             );
             if (hit) onSelect(hit.id);
           }}
@@ -324,7 +343,11 @@ export function TalentTree({
                   </div>
                 }
               >
-                <TalentTreePixi tree={tree} camera={camera} />
+                <TalentTreePixi
+                  tree={tree}
+                  camera={camera}
+                  hoveredId={hoveredId}
+                />
               </Suspense>
             </PixiErrorBoundary>
           ) : (

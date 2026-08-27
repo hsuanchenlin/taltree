@@ -135,6 +135,7 @@ export class RelicWorld {
   private lastNodes: readonly LaidOutNode[] = [];
   private edgeSignature = "";
   private cameraK = 1;
+  private hoveredId: string | null = null;
   private breathTime = 0;
   private readonly reducedMotion: boolean;
   private disposed = false;
@@ -195,6 +196,12 @@ export class RelicWorld {
       this.cameraK = camera.k;
       this.updatePlaques();
     }
+  }
+
+  setHoveredId(id: string | null): void {
+    if (this.disposed || id === this.hoveredId) return;
+    this.hoveredId = id;
+    this.updatePlaques();
   }
 
   destroy(): void {
@@ -356,7 +363,11 @@ export class RelicWorld {
 
   private updatePlaques(): void {
     for (const view of this.nodes.values()) {
-      view.plaque.visible = plaqueVisible(view.node, this.cameraK);
+      view.plaque.visible = plaqueVisible(
+        view.node,
+        this.cameraK,
+        this.hoveredId,
+      );
     }
   }
 
