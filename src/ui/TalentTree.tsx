@@ -144,6 +144,10 @@ export function TalentTree({
   );
   const [panning, setPanning] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Mirror for the window-level pointer handlers, which are registered once and
+  // must hit-test against the hover the renderer is actually showing.
+  const hoveredIdRef = useRef(hoveredId);
+  hoveredIdRef.current = hoveredId;
   const [pixiFailed, setPixiFailed] = useState(false);
   const layoutKey = `${tree.width}x${tree.height}:${tree.nodes.map((node) => node.id).join(",")}`;
   const selectedId = tree.nodes.find((node) => node.selected)?.id ?? null;
@@ -334,8 +338,13 @@ export function TalentTree({
     [applyCamera, ensureMotionLoop, reducedMotion, stopMotion],
   );
 
+  // The signal is owned by App and outlives this component, so only a change
+  // seen by *this* mount is a focus request; a remount inherits the last value
+  // without replaying its animation.
+  const handledFocusRef = useRef(focusSignal);
   useEffect(() => {
-    if (!focusSignal) return;
+    if (handledFocusRef.current === focusSignal) return;
+    handledFocusRef.current = focusSignal;
     const node = treeRef.current.nodes.find((item) => item.selected);
     if (node) focusNode(node);
   }, [focusSignal, focusNode]);
@@ -374,6 +383,9 @@ export function TalentTree({
 
   useEffect(() => {
     function endGesture(pan: PanGesture, retainClickSuppression: boolean) {
+      // Pinch detection reads `pointersRef.size`, so every gesture end has to
+      // drop its pointer - including the mouse-released-outside-the-window path.
+      pointersRef.current.delete(pan.pointerId);
       panRef.current = null;
       suppressClickRef.current = pan.moved && retainClickSuppression;
       setPanning(false);
@@ -454,7 +466,10 @@ export function TalentTree({
         const remaining = [...pointersRef.current.entries()][0];
         if (remaining) {
           // One finger stays down after a pinch: keep panning from where the
-          // pinch left the camera, with no jump and no inherited velocity.
+          // pinch left the camera, with no jump and no inherited velocity. The
+          // pending smooth-zoom target has to go with it, or every frame of the
+          // new pan gets lerped back toward the pinch's camera.
+          stopMotion();
           const [pointerId, point] = remaining;
           panRef.current = {
             pointerId,
@@ -521,6 +536,7 @@ export function TalentTree({
         treeRef.current.nodes,
         { x: event.clientX - rect.left, y: event.clientY - rect.top },
         cameraRef.current,
+        hoveredIdRef.current,
       );
       if (hit) {
         onSelect(hit.id);
@@ -535,7 +551,15 @@ export function TalentTree({
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [applyCamera, ensureMotionLoop, focusNode, onSelect, pixiLive, reducedMotion]);
+  }, [
+    applyCamera,
+    ensureMotionLoop,
+    focusNode,
+    onSelect,
+    pixiLive,
+    reducedMotion,
+    stopMotion,
+  ]);
 
   const spendLine = spendCopy(remaining, explanation);
 
