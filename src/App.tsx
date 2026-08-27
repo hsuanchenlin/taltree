@@ -72,6 +72,7 @@ export function App() {
           setDialog({ type: "create" });
           break;
         case "e":
+          if (!current.selected) break;
           event.preventDefault();
           current.clearError();
           setDialog({ type: "edit" });
@@ -176,6 +177,16 @@ export function App() {
         ) : (
           <p className="local-note">
             This plan lives in this browser. Taltree does not send it anywhere.
+            {planner.brokenRaw ? (
+              <>
+                {" "}
+                An earlier saved plan could not be read; a backup is kept on this
+                device.{" "}
+                <button type="button" className="text-btn" onClick={planner.downloadBroken}>
+                  Download the unreadable file
+                </button>
+              </>
+            ) : null}
           </p>
         )}
       </header>

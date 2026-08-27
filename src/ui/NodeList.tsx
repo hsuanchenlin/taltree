@@ -48,7 +48,7 @@ export function NodeList({ listings, selectedId, onSelect }: NodeListProps) {
             {items.length === 0 ? (
               <p className="empty-group">None.</p>
             ) : (
-              <ul className="node-rows" role="listbox" aria-labelledby={`group-${group.kind}`}>
+              <ul className="node-rows" aria-labelledby={`group-${group.kind}`}>
                 {items.map((item) => {
                   const selected = item.node.id === selectedId;
                   const reason =
@@ -61,10 +61,9 @@ export function NodeList({ listings, selectedId, onSelect }: NodeListProps) {
                     <li key={item.node.id}>
                       <button
                         type="button"
-                        role="option"
                         id={`node-${item.node.id}`}
                         className={`node-row${selected ? " selected" : ""}`}
-                        aria-selected={selected}
+                        aria-current={selected ? "true" : undefined}
                         onClick={() => onSelect(item.node.id)}
                       >
                         <span className="node-main">

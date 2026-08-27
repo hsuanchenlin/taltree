@@ -1,4 +1,4 @@
-import { cycleIfAdded } from "./plan";
+import { cycleIfAdded, MAX_BUDGET, MAX_COST, MAX_TITLE } from "./plan";
 import type { NodeStatus, Plan, PlanNode, Result } from "./types";
 
 export function parsePlan(data: unknown): Result<Plan> {
@@ -13,12 +13,16 @@ export function parsePlan(data: unknown): Result<Plan> {
   if (typeof data.title !== "string" || !data.title.trim()) {
     return fail("Plan title must be a non-empty string.");
   }
+  if (data.title.trim().length > MAX_TITLE) {
+    return fail(`Plan title must be ${MAX_TITLE} characters or fewer.`);
+  }
   if (
     typeof data.dailyBudget !== "number" ||
     !Number.isInteger(data.dailyBudget) ||
-    data.dailyBudget < 0
+    data.dailyBudget < 0 ||
+    data.dailyBudget > MAX_BUDGET
   ) {
-    return fail("dailyBudget must be a whole number of 0 or more.");
+    return fail(`dailyBudget must be a whole number from 0 to ${MAX_BUDGET}.`);
   }
   if (typeof data.activeDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(data.activeDate)) {
     return fail("activeDate must be a YYYY-MM-DD date.");
@@ -83,8 +87,18 @@ function parseNode(data: unknown): Result<PlanNode> {
   if (typeof data.title !== "string" || !data.title.trim()) {
     return fail("Each node needs a non-empty title.");
   }
-  if (typeof data.cost !== "number" || !Number.isInteger(data.cost) || data.cost < 0) {
-    return fail(`Node "${data.title}" cost must be a whole number of 0 or more.`);
+  if (data.title.trim().length > MAX_TITLE) {
+    return fail(`Node titles must be ${MAX_TITLE} characters or fewer.`);
+  }
+  if (
+    typeof data.cost !== "number" ||
+    !Number.isInteger(data.cost) ||
+    data.cost < 0 ||
+    data.cost > MAX_COST
+  ) {
+    return fail(
+      `Node "${data.title}" cost must be a whole number from 0 to ${MAX_COST}.`,
+    );
   }
   const status = parseStatus(data.status);
   if (!status.ok) return status;

@@ -23,7 +23,10 @@ import type {
   Result,
 } from "../domain/types";
 import {
+  backupBrokenPlan,
+  clearBrokenBackup,
   downloadFilename,
+  loadBrokenBackup,
   loadPlan,
   parsePlanText,
   savePlan,
@@ -42,13 +45,18 @@ function readInitial(): { plan: Plan; warning: string | null; raw: string | null
   const clock = systemClock();
   const loaded = loadPlan(localStorage);
   if (loaded.kind === "ok") {
-    return { plan: inspect(loaded.plan, clock).plan, warning: null, raw: null };
+    return {
+      plan: inspect(loaded.plan, clock).plan,
+      warning: null,
+      raw: loadBrokenBackup(localStorage),
+    };
   }
   const demo = inspect(demoPlan(), clock).plan;
   if (loaded.kind === "invalid") {
+    backupBrokenPlan(localStorage, loaded.raw);
     return { plan: demo, warning: loaded.message, raw: loaded.raw };
   }
-  return { plan: demo, warning: null, raw: null };
+  return { plan: demo, warning: null, raw: loadBrokenBackup(localStorage) };
 }
 
 export function usePlanner() {
@@ -173,6 +181,7 @@ export function usePlanner() {
     },
     resetDemo() {
       const next = inspect(demoPlan(), clock).plan;
+      clearBrokenBackup(localStorage);
       setBrokenRaw(null);
       commit({ ok: true, value: next }, next.nodes[0]?.id ?? null);
     },
@@ -183,6 +192,7 @@ export function usePlanner() {
         return false;
       }
       const next = inspect(parsed.value, clock).plan;
+      clearBrokenBackup(localStorage);
       setBrokenRaw(null);
       return commit({ ok: true, value: next }, next.nodes[0]?.id ?? null);
     },

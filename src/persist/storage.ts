@@ -2,6 +2,7 @@ import { parsePlan } from "../domain/parse";
 import type { Plan, Result } from "../domain/types";
 
 export const STORAGE_KEY = "taltree.plan.v1";
+export const BROKEN_BACKUP_KEY = "taltree.plan.v1.broken";
 
 export type LoadResult =
   | { kind: "empty" }
@@ -28,6 +29,19 @@ export function loadPlan(storage: Storage): LoadResult {
 
 export function savePlan(storage: Storage, plan: Plan): void {
   storage.setItem(STORAGE_KEY, serializePlan(plan));
+}
+
+export function backupBrokenPlan(storage: Storage, raw: string): void {
+  storage.setItem(BROKEN_BACKUP_KEY, raw);
+}
+
+export function loadBrokenBackup(storage: Storage): string | null {
+  const raw = storage.getItem(BROKEN_BACKUP_KEY);
+  return raw === null || raw === "" ? null : raw;
+}
+
+export function clearBrokenBackup(storage: Storage): void {
+  storage.removeItem(BROKEN_BACKUP_KEY);
 }
 
 export function serializePlan(plan: Plan): string {

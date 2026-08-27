@@ -4,6 +4,9 @@ import { parsePlan } from "../domain/parse";
 import { inspect } from "../domain/plan";
 import { frozenClock } from "../domain/clock";
 import {
+  backupBrokenPlan,
+  clearBrokenBackup,
+  loadBrokenBackup,
   loadPlan,
   parsePlanText,
   savePlan,
@@ -55,6 +58,56 @@ describe("plan document", () => {
     if (loaded.kind === "invalid") {
       expect(loaded.raw).toBe("{not json");
       expect(loaded.message).toMatch(/JSON/);
+    }
+  });
+
+  it("keeps a broken-plan backup retrievable until cleared", () => {
+    const storage = new MemoryStorage();
+    expect(loadBrokenBackup(storage)).toBeNull();
+    backupBrokenPlan(storage, "{not json");
+    expect(loadBrokenBackup(storage)).toBe("{not json");
+    savePlan(storage, demoPlan());
+    expect(loadBrokenBackup(storage)).toBe("{not json");
+    clearBrokenBackup(storage);
+    expect(loadBrokenBackup(storage)).toBeNull();
+  });
+
+  it("rejects imported values beyond the domain bounds", () => {
+    const base = JSON.parse(serializePlan(demoPlan())) as Record<string, unknown>;
+    const nodes = base.nodes as { cost: number; title: string }[];
+
+    const hugeBudget = parsePlanText(
+      JSON.stringify({ ...base, dailyBudget: 100000000 }),
+    );
+    expect(hugeBudget.ok).toBe(false);
+    if (!hugeBudget.ok) expect(hugeBudget.error.message).toContain("0 to 99");
+
+    const hugeCost = parsePlanText(
+      JSON.stringify({
+        ...base,
+        nodes: [{ ...nodes[0], cost: 100 }, ...nodes.slice(1)],
+      }),
+    );
+    expect(hugeCost.ok).toBe(false);
+    if (!hugeCost.ok) expect(hugeCost.error.message).toContain("0 to 99");
+
+    const hugeTitle = parsePlanText(
+      JSON.stringify({ ...base, title: "t".repeat(201) }),
+    );
+    expect(hugeTitle.ok).toBe(false);
+    if (!hugeTitle.ok) {
+      expect(hugeTitle.error.message).toContain("200 characters or fewer");
+    }
+
+    const hugeNodeTitle = parsePlanText(
+      JSON.stringify({
+        ...base,
+        nodes: [{ ...nodes[0], title: "t".repeat(201) }, ...nodes.slice(1)],
+      }),
+    );
+    expect(hugeNodeTitle.ok).toBe(false);
+    if (!hugeNodeTitle.ok) {
+      expect(hugeNodeTitle.error.message).toContain("200 characters or fewer");
     }
   });
 

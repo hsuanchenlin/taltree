@@ -14,9 +14,9 @@ import type {
   Result,
 } from "./types";
 
-const MAX_TITLE = 200;
-const MAX_COST = 99;
-const MAX_BUDGET = 99;
+export const MAX_TITLE = 200;
+export const MAX_COST = 99;
+export const MAX_BUDGET = 99;
 
 export function emptyPlan(clock: Clock, title = "Untitled plan"): Plan {
   return {
@@ -330,10 +330,6 @@ function validatePrereqs(
   prerequisiteIds: string[],
 ): Result<true> {
   for (const id of prerequisiteIds) {
-    if (dependentId !== "new-node" && id === dependentId) {
-      const cycle = cycleIfAdded(plan, dependentId, id);
-      if (cycle) return { ok: false, error: cycle };
-    }
     if (!findNode(plan, id)) {
       return fail("not-found", `Unknown prerequisite "${id}".`, id);
     }
