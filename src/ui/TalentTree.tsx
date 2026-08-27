@@ -29,6 +29,7 @@ import {
   fitCamera,
   lerpCamera,
   READABLE_CAMERA,
+  rebaseDragOrigin,
   shouldGlide,
   stepMomentum,
   zoomAbout,
@@ -272,21 +273,26 @@ export function TalentTree({
     }
   }, [selectedId, applyCamera, stopMotion]);
 
-  const zoomBy = useCallback(
-    (factor: number, focus?: { x: number; y: number }) => {
-      const viewport = viewportRef.current;
-      if (!viewport) return;
-      const point = focus ?? {
-        x: viewport.clientWidth / 2,
-        y: viewport.clientHeight / 2,
-      };
+  /**
+   * The one way a zoom or fit reaches the camera. A live drag positions the
+   * camera absolutely from its own origin, so it - not the motion loop - owns
+   * the camera while a finger or button is down: the target lands immediately
+   * and the drag's origin absorbs it, instead of being interpolated frame by
+   * frame against a base the drag keeps overwriting.
+   */
+  const applyZoomTarget = useCallback(
+    (target: Camera) => {
       const motion = motionRef.current;
       motion.glide = null;
       motion.focus = null;
-      const base = motion.zoomTarget ?? cameraRef.current;
-      const target = zoomAbout(base, factor, point);
-      if (reducedMotion || zoomSettled(cameraRef.current, target)) {
+      const pan = panRef.current;
+      if (pan || reducedMotion || zoomSettled(cameraRef.current, target)) {
         motion.zoomTarget = null;
+        if (pan) {
+          const rebased = rebaseDragOrigin(pan, cameraRef.current, target);
+          pan.camX = rebased.camX;
+          pan.camY = rebased.camY;
+        }
         applyCamera(target);
         return;
       }
@@ -296,21 +302,25 @@ export function TalentTree({
     [applyCamera, ensureMotionLoop, reducedMotion],
   );
 
+  const zoomBy = useCallback(
+    (factor: number, focus?: { x: number; y: number }) => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const point = focus ?? {
+        x: viewport.clientWidth / 2,
+        y: viewport.clientHeight / 2,
+      };
+      const base = motionRef.current.zoomTarget ?? cameraRef.current;
+      applyZoomTarget(zoomAbout(base, factor, point));
+    },
+    [applyZoomTarget],
+  );
+
   const fitToViewport = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const motion = motionRef.current;
-    motion.glide = null;
-    motion.focus = null;
-    const target = fitCamera(treeRef.current, sizeOf(viewport));
-    if (reducedMotion) {
-      motion.zoomTarget = null;
-      applyCamera(target);
-      return;
-    }
-    motion.zoomTarget = target;
-    ensureMotionLoop();
-  }, [applyCamera, ensureMotionLoop, reducedMotion]);
+    applyZoomTarget(fitCamera(treeRef.current, sizeOf(viewport)));
+  }, [applyZoomTarget]);
 
   /** Smoothly center the camera on a node (`f`, double-click, double-tap). */
   const focusNode = useCallback(
@@ -410,17 +420,12 @@ export function TalentTree({
           x: pinch.baseCamera.x + (midX - pinch.startMidX),
           y: pinch.baseCamera.y + (midY - pinch.startMidY),
         };
-        const target = zoomAbout(panned, distance / pinch.startDistance, {
-          x: midX - rect.left,
-          y: midY - rect.top,
-        });
-        if (reducedMotion) {
-          motionRef.current.zoomTarget = null;
-          applyCamera(target);
-          return;
-        }
-        motionRef.current.zoomTarget = target;
-        ensureMotionLoop();
+        applyZoomTarget(
+          zoomAbout(panned, distance / pinch.startDistance, {
+            x: midX - rect.left,
+            y: midY - rect.top,
+          }),
+        );
         return;
       }
       const pan = panRef.current;
@@ -553,6 +558,7 @@ export function TalentTree({
     };
   }, [
     applyCamera,
+    applyZoomTarget,
     ensureMotionLoop,
     focusNode,
     onSelect,

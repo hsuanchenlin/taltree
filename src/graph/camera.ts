@@ -219,6 +219,29 @@ export function zoomEase(dtMs: number): number {
   );
 }
 
+/** The camera origin a drag started from, which its pointer deltas add to. */
+export interface DragOrigin {
+  camX: number;
+  camY: number;
+}
+
+/**
+ * Where a live drag's origin moves when something other than the drag shifts
+ * the camera (a zoom step, a fit). A drag positions the camera absolutely, as
+ * origin plus the total pointer delta, so without this the next pointer move
+ * would write the shift back out.
+ */
+export function rebaseDragOrigin(
+  origin: DragOrigin,
+  from: Camera,
+  to: Camera,
+): DragOrigin {
+  return {
+    camX: origin.camX + (to.x - from.x),
+    camY: origin.camY + (to.y - from.y),
+  };
+}
+
 /** Whether a smooth zoom is close enough to its target to snap to it. */
 export function zoomSettled(current: Camera, target: Camera): boolean {
   return (

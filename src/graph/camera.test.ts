@@ -10,6 +10,7 @@ import {
   fitCamera,
   glideStopped,
   lerpCamera,
+  rebaseDragOrigin,
   shouldGlide,
   stepMomentum,
   zoomAbout,
@@ -261,6 +262,30 @@ describe("smooth zoom easing", () => {
     expect(zoomSettled(target, target)).toBe(true);
     expect(zoomSettled({ ...target, x: target.x + 5 }, target)).toBe(false);
     expect(zoomSettled({ ...target, k: target.k + 0.01 }, target)).toBe(false);
+  });
+});
+
+describe("rebaseDragOrigin", () => {
+  const origin = { camX: 40, camY: -25 };
+
+  it("absorbs a camera shift so the next drag delta keeps it", () => {
+    const from: Camera = { x: 100, y: 200, k: 1 };
+    const to = zoomAbout(from, 1.15, { x: 400, y: 300 });
+    const rebased = rebaseDragOrigin(origin, from, to);
+    const dragDelta = { x: 60, y: -35 };
+    expect(rebased.camX + dragDelta.x).toBeCloseTo(
+      origin.camX + dragDelta.x + (to.x - from.x),
+      10,
+    );
+    expect(rebased.camY + dragDelta.y).toBeCloseTo(
+      origin.camY + dragDelta.y + (to.y - from.y),
+      10,
+    );
+  });
+
+  it("leaves the origin alone when the camera only changed zoom", () => {
+    const camera: Camera = { x: 100, y: 200, k: 1 };
+    expect(rebaseDragOrigin(origin, camera, { ...camera, k: 2 })).toEqual(origin);
   });
 });
 
