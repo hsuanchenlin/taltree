@@ -20,7 +20,7 @@ function blockedPolygonVertices(): { x: number; y: number }[] {
     for (const { shape } of instruction.data.path.shapePath.shapePrimitives) {
       if (!(shape instanceof Polygon)) continue;
       for (let i = 0; i < shape.points.length; i += 2) {
-        vertices.push({ x: shape.points[i], y: shape.points[i + 1] });
+        vertices.push({ x: shape.points[i]!, y: shape.points[i + 1]! });
       }
     }
   }

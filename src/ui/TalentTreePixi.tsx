@@ -43,11 +43,16 @@ export default function TalentTreePixi({
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const host = canvas.parentElement;
+    if (!host) return;
     let active = true;
     const app = new PixiApplication();
     function dispose() {
       try {
-        app.destroy(true, { children: true });
+        // React owns the canvas element. In development StrictMode the first
+        // effect cleanup can finish after the replacement effect has mounted
+        // against that same canvas, so Pixi must never remove the view.
+        app.destroy(false, { children: true });
         return;
       } catch {
         try {
@@ -71,7 +76,7 @@ export default function TalentTreePixi({
     }, INIT_TIMEOUT_MS);
     const init = app.init({
       canvas,
-      resizeTo: canvas.parentElement,
+      resizeTo: host,
       antialias: false,
       roundPixels: true,
       preference: "webgl",
