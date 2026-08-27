@@ -7,14 +7,19 @@ import {
   dashPath,
   diffWorldNodes,
   edgeCurve,
+  PLAQUE_CAPTION_GAP,
   PLAQUE_OFFSET_Y,
+  PLAQUE_PAD_BOTTOM,
+  PLAQUE_PAD_TOP,
+  PLAQUE_TITLE_GAP,
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
+  plaqueHeight,
   plaqueVisible,
   SOCKET_RADIUS,
   socketCenter,
 } from "./relicGeometry";
-import { bakeRelicSkins, destroyRelicSkins } from "./skins";
+import { bakeRelicSkins, destroyRelicSkins, SKIN_FRAME_SCALE } from "./skins";
 import type { RelicSkins } from "./skins";
 
 /**
@@ -36,6 +41,16 @@ const BREATH_BASE = 0.46;
 const BREATH_AMPLITUDE = 0.08;
 
 const FONT_UI = '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif';
+
+// Skin sizes are quoted at the art's rim radius; the baked frame is slightly
+// wider so the completed halo fits, so every sprite scales up to match.
+const SOCKET_SIZE = SOCKET_RADIUS * 2 * SKIN_FRAME_SCALE;
+const AURA_SIZE = 112 * SKIN_FRAME_SCALE;
+const GLOW_SIZE = 96 * SKIN_FRAME_SCALE;
+const HALO_SIZE = 84 * SKIN_FRAME_SCALE;
+
+/** Longest elision loop before the plaque keeps whatever is left. */
+const ELIDE_STEPS = 40;
 
 const CAPTION_COLORS = {
   blocked: 0xe0a08e,
@@ -62,6 +77,49 @@ function edgeSignatureOf(edges: readonly LaidOutEdge[]): string {
   return edges
     .map((e) => `${e.from}>${e.to}:${e.kind}:${e.x1},${e.y1},${e.x2},${e.y2}`)
     .join(";");
+}
+
+function plaqueStackHeight(view: NodeView): number {
+  const caption = view.plaqueCaption.visible
+    ? view.plaqueCaption.height + PLAQUE_CAPTION_GAP
+    : 0;
+  return (
+    PLAQUE_PAD_TOP +
+    view.plaqueTitle.height +
+    PLAQUE_TITLE_GAP +
+    view.plaqueSub.height +
+    caption +
+    PLAQUE_PAD_BOTTOM
+  );
+}
+
+function trimTail(text: string): string {
+  return text.slice(0, text.length - Math.max(1, Math.ceil(text.length * 0.15))).trimEnd();
+}
+
+/**
+ * Shortens plaque text until it fits the height `plaqueHeight` reserves for the
+ * node, so a very long title can neither spill past the plaque nor push the
+ * drawn plaque beyond the box the tree hit-tests clicks against.
+ */
+function elideToFit(view: NodeView, node: LaidOutNode, height: number): void {
+  let title = node.title;
+  let caption = node.caption ?? "";
+  for (let step = 0; step < ELIDE_STEPS; step += 1) {
+    if (plaqueStackHeight(view) <= height) return;
+    if (view.plaqueCaption.visible && caption.length > title.length) {
+      caption = trimTail(caption);
+      view.plaqueCaption.text = `${caption}…`;
+    } else if (title.length > 1) {
+      title = trimTail(title);
+      view.plaqueTitle.text = `${title}…`;
+    } else if (view.plaqueCaption.visible && caption.length > 1) {
+      caption = trimTail(caption);
+      view.plaqueCaption.text = `${caption}…`;
+    } else {
+      return;
+    }
+  }
 }
 
 export class RelicWorld {
@@ -165,27 +223,27 @@ export class RelicWorld {
     const container = new Container();
     const aura = new Sprite(this.skins.glow);
     aura.anchor.set(0.5);
-    aura.width = 112;
-    aura.height = 112;
+    aura.width = AURA_SIZE;
+    aura.height = AURA_SIZE;
     aura.tint = AURA_TINT;
     aura.alpha = 0.4;
     aura.blendMode = "add";
     const glow = new Sprite(this.skins.glow);
     glow.anchor.set(0.5);
-    glow.width = 96;
-    glow.height = 96;
+    glow.width = GLOW_SIZE;
+    glow.height = GLOW_SIZE;
     glow.tint = 0xffd27a;
     glow.alpha = this.reducedMotion ? BREATH_BASE + BREATH_AMPLITUDE : BREATH_BASE;
     glow.blendMode = "add";
     const halo = new Sprite(this.skins.halo);
     halo.anchor.set(0.5);
-    halo.width = 84;
-    halo.height = 84;
+    halo.width = HALO_SIZE;
+    halo.height = HALO_SIZE;
     halo.alpha = 0.9;
     const socket = new Sprite(this.skins.sockets[node.kind]);
     socket.anchor.set(0.5);
-    socket.width = SOCKET_RADIUS * 2;
-    socket.height = SOCKET_RADIUS * 2;
+    socket.width = SOCKET_SIZE;
+    socket.height = SOCKET_SIZE;
     const ring = new Graphics();
 
     const plaque = new Container();
@@ -264,27 +322,30 @@ export class RelicWorld {
 
     view.plaqueTitle.text = node.title;
     view.plaqueSub.text = `${pointsLabel(node.cost)} · ${KIND_LABEL[node.kind]}`;
-    view.plaqueTitle.position.set(0, 4);
-    let subY = 4 + view.plaqueTitle.height + 1;
-    let captionHeight = 0;
     if (node.caption) {
       view.plaqueCaption.visible = true;
       view.plaqueCaption.text = node.caption;
       view.plaqueCaption.style.fill = node.captionTone
         ? CAPTION_COLORS[node.captionTone]
         : 0xc7bdab;
-      captionHeight = view.plaqueCaption.height + 2;
     } else {
       view.plaqueCaption.visible = false;
+      view.plaqueCaption.text = "";
     }
-    view.plaqueSub.position.set(0, subY);
-    subY += view.plaqueSub.height;
-    view.plaqueCaption.position.set(0, subY + 1);
 
-    const plaqueHeight = Math.ceil(subY + captionHeight + 5);
+    const height = plaqueHeight(node);
+    elideToFit(view, node, height);
+    view.plaqueTitle.position.set(0, PLAQUE_PAD_TOP);
+    const subY = PLAQUE_PAD_TOP + view.plaqueTitle.height + PLAQUE_TITLE_GAP;
+    view.plaqueSub.position.set(0, subY);
+    view.plaqueCaption.position.set(
+      0,
+      subY + view.plaqueSub.height + PLAQUE_CAPTION_GAP,
+    );
+
     view.plaqueBg
       .clear()
-      .roundRect(-PLAQUE_WIDTH / 2, 0, PLAQUE_WIDTH, plaqueHeight, 6)
+      .roundRect(-PLAQUE_WIDTH / 2, 0, PLAQUE_WIDTH, height, 6)
       .fill({ color: 0x0c1016, alpha: 0.72 })
       .stroke({ width: 1, color: 0x2a2f38, alpha: 0.9 });
   }

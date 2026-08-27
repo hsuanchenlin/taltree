@@ -45,6 +45,7 @@ interface PanGesture {
 
 interface PixiErrorBoundaryProps {
   fallback: ReactNode;
+  onFailed: () => void;
   children: ReactNode;
 }
 
@@ -61,6 +62,7 @@ class PixiErrorBoundary extends Component<
 
   componentDidCatch(error: unknown): void {
     console.error("Relic slab renderer failed; falling back to the DOM tree.", error);
+    this.props.onFailed();
   }
 
   render(): ReactNode {
@@ -81,10 +83,17 @@ export function TalentTree({
   const suppressClickRef = useRef(false);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, k: 1 });
   const [panning, setPanning] = useState(false);
+  const [pixiFailed, setPixiFailed] = useState(false);
   const layoutKey = `${tree.width}x${tree.height}:${tree.nodes.map((node) => node.id).join(",")}`;
   const selectedId = tree.nodes.find((node) => node.selected)?.id ?? null;
   const hasNodes = tree.nodes.length > 0;
+  // Intent to mount the slab, versus the slab actually rendering. Everything
+  // the relic surface owns - the dark board, its hit test, its screen-reader
+  // list - must follow the latter, or the DOM fallback inherits a dark
+  // background it was never styled for and a second, invisible click target.
   const usePixi = hasNodes && canUseWebGL();
+  const pixiLive = usePixi && !pixiFailed;
+  const onPixiFailed = useCallback(() => setPixiFailed(true), []);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -243,7 +252,7 @@ export function TalentTree({
       ) : (
         <div
           ref={viewportRef}
-          className={`tree-viewport${panning ? " panning" : ""}${usePixi ? " relic" : ""}`}
+          className={`tree-viewport${panning ? " panning" : ""}${pixiLive ? " relic" : ""}`}
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === "+" || event.key === "=") {
@@ -281,7 +290,7 @@ export function TalentTree({
             event.stopPropagation();
           }}
           onClick={(event) => {
-            if (!usePixi) return;
+            if (!pixiLive) return;
             const viewport = viewportRef.current;
             if (!viewport) return;
             const rect = viewport.getBoundingClientRect();
@@ -295,6 +304,7 @@ export function TalentTree({
         >
           {usePixi ? (
             <PixiErrorBoundary
+              onFailed={onPixiFailed}
               fallback={
                 <TalentTreeDomWorld tree={tree} camera={camera} onSelect={onSelect} />
               }
@@ -314,7 +324,7 @@ export function TalentTree({
           )}
         </div>
       )}
-      {usePixi ? (
+      {pixiLive ? (
         <ol className="sr-only" aria-label="Tree nodes">
           {tree.nodes.map((node) => (
             <li key={node.id}>

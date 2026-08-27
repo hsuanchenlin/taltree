@@ -2,6 +2,8 @@
 
 Screenshots from a 1440x900 laptop session (and a 500x844 narrow check, below the 840px mobile breakpoint) against the local demo plan.
 
+These capture the SVG/DOM board, which is now the renderer machines without WebGL fall back to. The primary workspace draws the same plan as a PixiJS relic slab: uniform 72px circular rune sockets whose rim, fill, and glyph carry the state that shape carries below, with title plaques beneath them. Every behaviour these shots evidence - selection, spend copy, blocked reasons, defer, fit, the list alternative - is unchanged.
+
 | File | What to look for |
 | --- | --- |
 | [01-dense-eligible.png](01-dense-eligible.png) | Demo forest at readable zoom. Eligible nodes are rounded; blocked tax packet is square with a waiting caption and a dashed prerequisite edge. |

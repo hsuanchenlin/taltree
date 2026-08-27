@@ -1,6 +1,7 @@
 import { Application } from "@pixi/react";
 import type { Application as PixiApplication } from "pixi.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isRendererInitFailure } from "../canvas/webgl";
 import { RelicWorld } from "../canvas/world";
 import type { Camera, LaidOutGraph } from "../graph";
 
@@ -20,8 +21,13 @@ interface TalentTreePixiProps {
  * it, so a rejected init would silently leave a blank slab forever. We watch
  * for the rejection and, as a backstop, for an init that simply never lands,
  * then rethrow during render so `PixiErrorBoundary` swaps in the DOM world.
+ *
+ * A rejection only demotes the slab if it looks like a renderer failure and
+ * the stage is still uninitialised after a grace period, so a stray rejection
+ * that merely races a healthy init cannot cost the user the WebGL renderer.
  */
 const INIT_TIMEOUT_MS = 10_000;
+const INIT_GRACE_MS = 750;
 
 function resolveResolution(): number {
   if (typeof window === "undefined") return 1;
@@ -55,6 +61,7 @@ export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
 
   useEffect(() => {
     if (initialised) return;
+    const timers: number[] = [];
     function fail(reason: unknown) {
       if (initialisedRef.current) return;
       setInitFailure(
@@ -62,14 +69,19 @@ export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
       );
     }
     function onRejection(event: PromiseRejectionEvent) {
-      fail(event.reason);
+      if (initialisedRef.current) return;
+      if (!isRendererInitFailure(event.reason)) return;
+      const { reason } = event;
+      timers.push(window.setTimeout(() => fail(reason), INIT_GRACE_MS));
     }
-    const timer = window.setTimeout(() => {
-      fail(new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`));
-    }, INIT_TIMEOUT_MS);
+    timers.push(
+      window.setTimeout(() => {
+        fail(new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`));
+      }, INIT_TIMEOUT_MS),
+    );
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
-      window.clearTimeout(timer);
+      for (const timer of timers) window.clearTimeout(timer);
       window.removeEventListener("unhandledrejection", onRejection);
     };
   }, [initialised]);

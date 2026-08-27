@@ -1,4 +1,4 @@
-import { FillGradient, Graphics, Texture } from "pixi.js";
+import { FillGradient, Graphics, Rectangle, Texture } from "pixi.js";
 import type { Renderer } from "pixi.js";
 import type { NodeKind } from "../domain/types";
 
@@ -18,6 +18,17 @@ export interface RelicSkins {
 const SIZE = 128;
 const CENTER = SIZE / 2;
 const RIM_RADIUS = 56;
+/** Outer edge of the rim stroke: the radius every sprite size is quoted at. */
+const ART_RADIUS = RIM_RADIUS + 4;
+/** The completed skin's outer halo reaches furthest, so every skin bakes here. */
+const FRAME_RADIUS = RIM_RADIUS + 6;
+
+/**
+ * Baked frame over quoted art radius. Without one shared frame each skin's own
+ * bounds would set its on-screen scale, and the completed socket - alone in
+ * carrying an outer halo - would visibly shrink the moment a node completes.
+ */
+export const SKIN_FRAME_SCALE = FRAME_RADIUS / ART_RADIUS;
 
 const COLORS = {
   iron: 0x6a7078,
@@ -81,7 +92,16 @@ function speckle(g: Graphics, seed: number): void {
 function bake(renderer: Renderer, draw: (g: Graphics) => void): Texture {
   const g = new Graphics();
   draw(g);
-  const texture = renderer.generateTexture({ target: g, resolution: 2 });
+  const texture = renderer.generateTexture({
+    target: g,
+    resolution: 2,
+    frame: new Rectangle(
+      CENTER - FRAME_RADIUS,
+      CENTER - FRAME_RADIUS,
+      FRAME_RADIUS * 2,
+      FRAME_RADIUS * 2,
+    ),
+  });
   g.destroy();
   return texture;
 }

@@ -17,10 +17,10 @@ export const PLAQUE_OFFSET_Y = PLAQUE_TOP - SOCKET_TOP - SOCKET_RADIUS;
 /** At or above this zoom every node shows its full plaque; below it only highlighted nodes do. */
 export const LOD_READABLE_K = 0.85;
 
-const PLAQUE_PAD_TOP = 4;
-const PLAQUE_PAD_BOTTOM = 5;
-const PLAQUE_TITLE_GAP = 1;
-const PLAQUE_CAPTION_GAP = 3;
+export const PLAQUE_PAD_TOP = 4;
+export const PLAQUE_PAD_BOTTOM = 5;
+export const PLAQUE_TITLE_GAP = 1;
+export const PLAQUE_CAPTION_GAP = 3;
 const TITLE_LINE_HEIGHT = 17;
 const SUB_LINE_HEIGHT = 15;
 const CAPTION_LINE_HEIGHT = 15;
@@ -59,9 +59,10 @@ export function wrappedLineCount(text: string, charWidth: number): number {
 }
 
 /**
- * The plaque's drawn height for a node. `world.ts` grows the plaque background
- * to fit the title, cost/kind line, and optional caption; this reproduces that
- * from the same content so the hit box covers the whole visible plaque.
+ * The plaque's height for a node, from the title, cost/kind line, and optional
+ * caption it has to hold. This is the single source of truth: `world.ts` draws
+ * the plaque background at exactly this height (eliding text that will not fit)
+ * so the hit box and the visible plaque can never disagree.
  */
 export function plaqueHeight(
   node: Pick<LaidOutNode, "title" | "caption">,

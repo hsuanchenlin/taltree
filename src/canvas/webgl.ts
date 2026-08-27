@@ -35,3 +35,21 @@ function probeWebGL(): boolean {
 export function resetWebGLCache(): void {
   cached = null;
 }
+
+const RENDERER_MESSAGE = /webgl|webgpu|renderer|graphics|\bgpu\b|pixi/i;
+/** Only names a bundle can carry: a generic word here would match anything. */
+const RENDERER_STACK = /webgl|webgpu|pixi/i;
+
+/**
+ * Whether an unhandled rejection plausibly came from Pixi's renderer bring-up.
+ * The stage watches page-global rejections because `@pixi/react` swallows its
+ * own `app.init()` failure, so unrelated rejections must not be mistaken for it.
+ */
+export function isRendererInitFailure(reason: unknown): boolean {
+  if (typeof reason === "string") return RENDERER_MESSAGE.test(reason);
+  if (!(reason instanceof Error)) return false;
+  return (
+    RENDERER_MESSAGE.test(reason.message) ||
+    RENDERER_STACK.test(reason.stack ?? "")
+  );
+}

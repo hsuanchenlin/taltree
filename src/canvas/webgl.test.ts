@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { canUseWebGL, resetWebGLCache } from "./webgl";
+import { canUseWebGL, isRendererInitFailure, resetWebGLCache } from "./webgl";
 
 interface FakeContext {
   getContextAttributes: () => { stencil: boolean };
@@ -71,5 +71,34 @@ describe("canUseWebGL", () => {
     withStubbedCanvas(null);
     resetWebGLCache();
     expect(canUseWebGL()).toBe(false);
+  });
+});
+
+describe("isRendererInitFailure", () => {
+  it("claims the rejections Pixi's renderer bring-up actually throws", () => {
+    expect(
+      isRendererInitFailure(
+        new Error("No available renderer for the current environment"),
+      ),
+    ).toBe(true);
+    expect(isRendererInitFailure(new Error("Failed to create WebGL context"))).toBe(
+      true,
+    );
+    expect(isRendererInitFailure("WebGL unsupported")).toBe(true);
+  });
+
+  it("claims a rejection thrown from inside the pixi chunk", () => {
+    const error = new Error("Cannot read properties of undefined");
+    error.stack = "Error\n    at init (/assets/pixi_js-a1b2c3.js:12:9)";
+    expect(isRendererInitFailure(error)).toBe(true);
+  });
+
+  it("leaves unrelated rejections alone so they cannot demote a live slab", () => {
+    const unrelated = new Error("Failed to fetch");
+    unrelated.stack = "Error\n    at loadPlan (/assets/index-a1b2c3.js:4:1)";
+    expect(isRendererInitFailure(unrelated)).toBe(false);
+    expect(isRendererInitFailure("user cancelled")).toBe(false);
+    expect(isRendererInitFailure(undefined)).toBe(false);
+    expect(isRendererInitFailure({ message: "webgl" })).toBe(false);
   });
 });
