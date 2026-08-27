@@ -44,15 +44,22 @@ export default function TalentTreePixi({
     const canvas = canvasRef.current;
     if (!canvas) return;
     let active = true;
-    let disposed = false;
     const app = new PixiApplication();
     function dispose() {
-      if (disposed) return;
-      disposed = true;
       try {
         app.destroy(true, { children: true });
+        return;
       } catch {
-        app.stage?.destroy({ children: true });
+        try {
+          app.stage?.destroy({ children: true });
+        } catch (error) {
+          void error;
+        }
+        try {
+          app.renderer?.destroy(true);
+        } catch (error) {
+          void error;
+        }
       }
     }
     const timer = window.setTimeout(() => {
@@ -98,6 +105,7 @@ export default function TalentTreePixi({
       window.clearTimeout(timer);
       worldRef.current?.destroy();
       worldRef.current = null;
+      dispose();
       void init.then(dispose, dispose);
     };
   }, []);
