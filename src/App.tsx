@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { buildTalentTree, nearestNode } from "./graph";
 import { BudgetBar } from "./ui/BudgetBar";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatDay } from "./ui/format";
@@ -7,7 +8,10 @@ import { HelpDialog } from "./ui/HelpDialog";
 import { NodeDetail } from "./ui/NodeDetail";
 import { NodeFormDialog } from "./ui/NodeFormDialog";
 import { NodeList } from "./ui/NodeList";
+import { TalentTree } from "./ui/TalentTree";
 import { usePlanner } from "./ui/usePlanner";
+
+type ViewMode = "tree" | "list";
 
 type Dialog =
   | { type: "none" }
@@ -20,15 +24,32 @@ type Dialog =
 export function App() {
   const planner = usePlanner();
   const [dialog, setDialog] = useState<Dialog>({ type: "none" });
+  const [viewMode, setViewMode] = useState<ViewMode>("tree");
   const [mobileDetail, setMobileDetail] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const plannerRef = useRef(planner);
   plannerRef.current = planner;
   const [titleDraft, setTitleDraft] = useState(planner.plan.title);
+  const tree = buildTalentTree(planner.view, {
+    selectedId: planner.selectedId,
+    immediateUnlockIds:
+      planner.explanation?.immediateUnlocks.map((ref) => ref.id) ?? [],
+  });
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
 
   useEffect(() => {
     setTitleDraft(planner.plan.title);
   }, [planner.plan.title]);
+
+  useEffect(() => {
+    if (viewMode !== "list" || !planner.selectedId) return;
+    document.getElementById(`node-${planner.selectedId}`)?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [viewMode, planner.selectedId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -45,14 +66,43 @@ export function App() {
       const current = plannerRef.current;
       switch (event.key) {
         case "j":
-        case "ArrowDown":
           event.preventDefault();
           current.moveSelection(1);
           break;
         case "k":
-        case "ArrowUp":
           event.preventDefault();
           current.moveSelection(-1);
+          break;
+        case "ArrowDown":
+        case "ArrowUp":
+        case "ArrowLeft":
+        case "ArrowRight": {
+          event.preventDefault();
+          if (viewModeRef.current === "tree") {
+            const direction =
+              event.key === "ArrowDown"
+                ? "down"
+                : event.key === "ArrowUp"
+                  ? "up"
+                  : event.key === "ArrowLeft"
+                    ? "left"
+                    : "right";
+            const next = nearestNode(
+              treeRef.current.nodes,
+              current.selectedId,
+              direction,
+            );
+            if (next) current.select(next);
+          } else {
+            current.moveSelection(
+              event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1,
+            );
+          }
+          break;
+        }
+        case "v":
+          event.preventDefault();
+          setViewMode((mode) => (mode === "tree" ? "list" : "tree"));
           break;
         case "c":
           event.preventDefault();
@@ -115,7 +165,7 @@ export function App() {
               />
             </label>
             <p className="lede">
-              Local-first daily planner · {formatDay(planner.plan.activeDate)}
+              Local-first talent tree · {formatDay(planner.plan.activeDate)}
             </p>
           </div>
         </div>
@@ -192,18 +242,59 @@ export function App() {
       </header>
 
       <main id="plan" className="shell">
-        <NodeList
-          listings={planner.listings}
-          selectedId={planner.selectedId}
-          onSelect={(id) => {
-            planner.select(id);
-            setMobileDetail(true);
-          }}
-        />
+        <div className="workspace">
+          <div className="workspace-head">
+            <div>
+              <h2>{viewMode === "tree" ? "Talent tree" : "Plan list"}</h2>
+              <p>
+                {viewMode === "tree"
+                  ? "Hard prerequisites point downward. Completing an eligible node spends today's budget and may unlock what waits on it."
+                  : "The same plan as a list, grouped by eligible, deferred, blocked, and completed. Keyboard: j and k move."}
+              </p>
+            </div>
+            <div className="view-switch" role="group" aria-label="Plan view">
+              <button
+                type="button"
+                aria-pressed={viewMode === "tree"}
+                onClick={() => setViewMode("tree")}
+              >
+                Talent tree
+              </button>
+              <button
+                type="button"
+                aria-pressed={viewMode === "list"}
+                onClick={() => setViewMode("list")}
+              >
+                List
+              </button>
+            </div>
+          </div>
+          {viewMode === "tree" ? (
+            <TalentTree
+              tree={tree}
+              remaining={planner.remaining}
+              explanation={planner.explanation}
+              onSelect={(id) => {
+                planner.select(id);
+                setMobileDetail(true);
+              }}
+            />
+          ) : (
+            <NodeList
+              listings={planner.listings}
+              selectedId={planner.selectedId}
+              onSelect={(id) => {
+                planner.select(id);
+                setMobileDetail(true);
+              }}
+            />
+          )}
+        </div>
         <NodeDetail
           listing={planner.selected}
           explanation={planner.explanation}
           mobileOpen={mobileDetail}
+          backLabel={viewMode === "tree" ? "Back to tree" : "Back to list"}
           onComplete={planner.complete}
           onDefer={planner.defer}
           onUndefer={planner.undefer}
@@ -219,8 +310,10 @@ export function App() {
       <footer className="colophon">
         <p className="shortcuts">
           <span><kbd>j</kbd> <kbd>k</kbd> move</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> tree</span>
           <span><kbd>c</kbd> complete</span>
           <span><kbd>d</kbd> defer</span>
+          <span><kbd>v</kbd> view</span>
           <span><kbd>n</kbd> new</span>
           <span><kbd>?</kbd> help</span>
         </p>

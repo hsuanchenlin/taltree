@@ -1,6 +1,6 @@
 # Taltree
 
-A local-first web planner for an overloaded day. You set a daily point budget, spend it on a dependency graph, and see what each choice unlocks.
+A local-first web planner for an overloaded day. You set a daily point budget, spend it on a directed talent tree, and see what each choice unlocks.
 
 Unused budget expires at the next calendar day. Unfinished work stays. Missed days are not punished. There is no account, cloud, or AI.
 
@@ -16,7 +16,7 @@ npm run dev
 Open the URL Vite prints (default [http://localhost:5173](http://localhost:5173)).
 
 ```bash
-npm test          # domain and persistence tests
+npm test          # domain, graph projection/layout, persistence, and tree markup tests
 npm run typecheck
 npm run lint
 npm run build     # production bundle in dist/
@@ -29,13 +29,17 @@ The app runs entirely in the browser. It does not start a backend and does not s
 
 On first visit Taltree loads a demo plan, **A full Thursday**, so you can see a frontier that does not all fit in one day.
 
-1. Set **Daily budget** (points are your unit: hours, energy, or attention).
-2. The **Frontier** lists eligible work: open, not deferred today, with every hard prerequisite completed.
-3. Select a node to read **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this** with the direct remaining prerequisite.
-4. **Complete** spends the cost and refreshes remaining budget and the frontier. **Defer today** keeps the node incomplete and hides it until tomorrow (or until you return it).
+The **talent tree** is the main workspace. Independent chains sit side by side; hard prerequisites sit above what they unlock. Node shape, glyph, and label all mark state (Eligible, Blocked, Deferred today, Completed), not colour alone. The **List** view is the same plan grouped for keyboard browsing.
+
+1. Set **Daily budget** (points are your unit: hours, energy, or attention). Remaining budget stays visible on the tree and updates with spend.
+2. Select a node on the tree. The strip above the canvas states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
+3. The detail pane repeats **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this**.
+4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
 5. **New node** / **Edit** set title, cost, and hard prerequisites. Directed cycles are rejected with the loop named.
 
-Keyboard: `j` / `k` or arrows move, `c` completes, `d` defers, `u` undefer, `n` new node, `e` edit, `?` help. Status uses a glyph plus a word (Eligible, Blocked, Deferred today, Completed), not colour alone.
+Drag empty space to pan. Scroll, or use `+` / `-` / `0`, to zoom and fit. Arrows move to a nearby node on the tree. `v` toggles the list.
+
+Keyboard: `j` / `k` move in list order, arrows move on the tree, `c` completes, `d` defers, `u` undefer, `n` new node, `e` edit, `v` tree/list, `?` help.
 
 ## Your data
 
@@ -68,4 +72,6 @@ If a saved plan cannot be read, Taltree loads the demo instead but keeps the unr
 
 ## Scope (Slice 0)
 
-This slice is the daily-budget graph and unlock explanations. It does not include syllabus import, Obsidian, LLM extraction, collaboration, accounts, XP, streaks, avatars, push notifications, or calendar auto-scheduling.
+This slice is the interactive talent tree, daily-budget ledger, and unlock explanations. It does not include syllabus import, Obsidian, LLM extraction, collaboration, accounts, XP, streaks, avatars, push notifications, or calendar auto-scheduling. The list/detail view remains as an accessible alternative; the product is not canvas-only.
+
+Representative tree states used while building this slice are in [`docs/talent-tree/`](docs/talent-tree/).

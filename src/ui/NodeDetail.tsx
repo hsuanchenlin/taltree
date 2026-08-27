@@ -12,6 +12,7 @@ interface NodeDetailProps {
   onDelete: () => void;
   onClose: () => void;
   mobileOpen: boolean;
+  backLabel?: string;
 }
 
 export function NodeDetail({
@@ -24,6 +25,7 @@ export function NodeDetail({
   onDelete,
   onClose,
   mobileOpen,
+  backLabel = "Back to list",
 }: NodeDetailProps) {
   const paneClass = `detail${mobileOpen ? " mobile-open" : ""}`;
   if (!listing || !explanation) {
@@ -32,9 +34,10 @@ export function NodeDetail({
         <div className="detail-empty">
           <h2>Select a node</h2>
           <p>
-            The list on the left is the plan. Select a candidate to see its cost,
-            what completing it would unlock immediately, and which dependents stay
-            blocked with their direct reason.
+            The talent tree is the plan. Select a node to see its cost, whether it
+            fits remaining budget, what completing it would unlock immediately, and
+            which dependents stay blocked with their direct reason. The list view
+            is the same plan, grouped for keyboard browsing.
           </p>
         </div>
       </aside>
@@ -49,7 +52,7 @@ export function NodeDetail({
   return (
     <aside className={paneClass} aria-label="Node detail">
       <button type="button" className="text-btn close-detail" onClick={onClose}>
-        Back to list
+        {backLabel}
       </button>
       <header className="detail-head">
         <h2>{node.title}</h2>

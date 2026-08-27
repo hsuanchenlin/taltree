@@ -100,6 +100,7 @@ export function usePlanner() {
 
   return {
     clock,
+    view,
     plan: view.plan,
     remaining: view.remaining,
     listings,

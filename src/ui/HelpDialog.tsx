@@ -26,9 +26,11 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
     >
       <h2 id={titleId}>Using Taltree</h2>
       <p>
-        Spend today's point budget on the frontier. Selecting a node explains its
-        cost, what it would unlock immediately, and which dependents stay blocked
-        with their direct remaining prerequisite.
+        The talent tree is the main workspace. Hard prerequisites point downward.
+        Selecting a node explains its cost, whether it fits remaining budget, what
+        it would unlock immediately, and which dependents stay blocked with their
+        direct remaining prerequisite. Switch to the list if you want the same plan
+        grouped by state.
       </p>
       <p>
         Unused budget expires when the date changes. Unfinished work stays in the
@@ -40,15 +42,27 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
         <tbody>
           <tr>
             <th>
-              <kbd>j</kbd> / <kbd>↓</kbd>
+              <kbd>j</kbd> / <kbd>k</kbd>
             </th>
-            <td>Next node</td>
+            <td>Next / previous node in list order</td>
           </tr>
           <tr>
             <th>
-              <kbd>k</kbd> / <kbd>↑</kbd>
+              <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd>
             </th>
-            <td>Previous node</td>
+            <td>Nearby node on the tree (list order in list view)</td>
+          </tr>
+          <tr>
+            <th>
+              <kbd>v</kbd>
+            </th>
+            <td>Toggle talent tree and list</td>
+          </tr>
+          <tr>
+            <th>
+              <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd>
+            </th>
+            <td>Zoom in, zoom out, or fit the tree</td>
           </tr>
           <tr>
             <th>
@@ -95,9 +109,9 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
         </tbody>
       </table>
       <p>
-        Status is named in words and marked with a glyph, not colour alone. The
-        plan is saved on this device as JSON. Export a copy; Taltree never
-        uploads it.
+        Status is named in words and marked with a glyph and a shape, not colour
+        alone. Drag empty space to pan the tree; scroll to zoom. The plan is saved
+        on this device as JSON. Export a copy; Taltree never uploads it.
       </p>
       <div className="detail-actions">
         <button type="button" className="primary" onClick={onClose}>
