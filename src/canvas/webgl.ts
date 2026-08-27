@@ -2,25 +2,33 @@
  * One-shot WebGL capability check. Returns false under SSR / Vitest (no
  * document) and on software-render machines, so the tree falls back to the
  * SVG/DOM renderer. Memoized: the answer cannot change during a session.
+ *
+ * The probe mirrors Pixi's own `isWebGLSupported`: a stencil-capable WebGL1
+ * context. Anything weaker makes Pixi reject `app.init()` asynchronously, which
+ * is far more expensive to recover from than never mounting the stage.
  */
 
 let cached: boolean | null = null;
 
 export function canUseWebGL(): boolean {
   if (cached !== null) return cached;
-  if (typeof document === "undefined") {
-    cached = false;
-    return cached;
-  }
+  cached = probeWebGL();
+  return cached;
+}
+
+function probeWebGL(): boolean {
+  if (typeof document === "undefined") return false;
   try {
     const canvas = document.createElement("canvas");
-    cached = Boolean(
-      canvas.getContext("webgl2") ?? canvas.getContext("webgl"),
-    );
+    const gl = canvas.getContext("webgl", { stencil: true });
+    const supported = Boolean(gl?.getContextAttributes()?.stencil);
+    // Release the probe context so it does not count against the browser's
+    // live-context budget when Pixi asks for the real one.
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return supported;
   } catch {
-    cached = false;
+    return false;
   }
-  return cached;
 }
 
 /** Test hook: reset the memoized answer. */

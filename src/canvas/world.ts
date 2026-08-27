@@ -7,6 +7,9 @@ import {
   dashPath,
   diffWorldNodes,
   edgeCurve,
+  PLAQUE_OFFSET_Y,
+  PLAQUE_WIDTH,
+  PLAQUE_WRAP_WIDTH,
   plaqueVisible,
   SOCKET_RADIUS,
   socketCenter,
@@ -31,9 +34,6 @@ const AURA_TINT = 0xf0c25a;
 const BREATH_PERIOD_S = 2.4;
 const BREATH_BASE = 0.46;
 const BREATH_AMPLITUDE = 0.08;
-
-const PLAQUE_WIDTH = 170;
-const PLAQUE_OFFSET_Y = 44; // socket center -> plaque top
 
 const FONT_UI = '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif';
 
@@ -199,7 +199,7 @@ export class RelicWorld {
         fill: 0xf1ebe0,
         align: "center",
         wordWrap: true,
-        wordWrapWidth: PLAQUE_WIDTH - 16,
+        wordWrapWidth: PLAQUE_WRAP_WIDTH,
         breakWords: true,
       }),
     });
@@ -222,7 +222,7 @@ export class RelicWorld {
         fill: 0xc7bdab,
         align: "center",
         wordWrap: true,
-        wordWrapWidth: PLAQUE_WIDTH - 16,
+        wordWrapWidth: PLAQUE_WRAP_WIDTH,
       }),
     });
     plaqueCaption.anchor.set(0.5, 0);

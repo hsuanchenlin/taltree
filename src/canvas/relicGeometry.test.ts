@@ -8,10 +8,15 @@ import {
   hitTestNode,
   LOD_READABLE_K,
   plaqueBox,
+  plaqueHeight,
+  PLAQUE_TOP,
+  PLAQUE_WIDTH,
+  PLAQUE_WRAP_WIDTH,
   plaqueVisible,
   socketCenter,
   SOCKET_RADIUS,
   visualSignature,
+  wrappedLineCount,
 } from "./relicGeometry";
 
 function makeNode(overrides: Partial<LaidOutNode> = {}): LaidOutNode {
@@ -55,6 +60,60 @@ describe("plaqueVisible (LOD)", () => {
     expect(plaqueVisible(makeNode({ selected: true }), k)).toBe(true);
     expect(plaqueVisible(makeNode({ unlocksIfCompleted: true }), k)).toBe(true);
     expect(plaqueVisible(makeNode({ id: "b" }), k, "b")).toBe(true);
+  });
+});
+
+describe("plaqueBox", () => {
+  it("centers the drawn plaque width under the socket", () => {
+    const box = plaqueBox(makeNode());
+    expect(box.width).toBe(PLAQUE_WIDTH);
+    expect(box.x + box.width / 2).toBe(100 + 200 / 2);
+    expect(box.y).toBe(50 + PLAQUE_TOP);
+  });
+
+  it("grows with wrapped titles and captions, as the drawn plaque does", () => {
+    const short = plaqueHeight(makeNode());
+    const captioned = plaqueHeight(makeNode({ caption: "Waiting on Draft" }));
+    const wrapped = plaqueHeight(
+      makeNode({ title: "A considerably longer talent title that wraps" }),
+    );
+    expect(captioned).toBeGreaterThan(short);
+    expect(wrapped).toBeGreaterThan(short);
+    expect(
+      plaqueHeight(
+        makeNode({
+          title: "A considerably longer talent title that wraps",
+          caption: "Waiting on Draft",
+        }),
+      ),
+    ).toBeGreaterThan(Math.max(captioned, wrapped));
+  });
+
+  it("covers the plaque heights world.ts draws for realistic content", () => {
+    // world.ts stacks 4px padding, a 13px title, a 11px cost/kind line, an
+    // optional 11px caption, and 5px padding. These are the drawn extents.
+    expect(plaqueHeight(makeNode())).toBeGreaterThanOrEqual(41);
+    expect(
+      plaqueHeight(makeNode({ caption: "Waiting on Draft" })),
+    ).toBeGreaterThanOrEqual(57);
+  });
+
+  it("never reaches the rank below, even for a pathological title", () => {
+    const height = plaqueHeight(makeNode({ title: "x".repeat(200) }));
+    expect(PLAQUE_TOP + height).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("wrappedLineCount", () => {
+  it("is zero for empty text and one for text that fits", () => {
+    expect(wrappedLineCount("", 8)).toBe(0);
+    expect(wrappedLineCount("Draft", 8)).toBe(1);
+  });
+
+  it("counts one line per wrap width", () => {
+    const perLine = Math.floor(PLAQUE_WRAP_WIDTH / 8);
+    expect(wrappedLineCount("x".repeat(perLine), 8)).toBe(1);
+    expect(wrappedLineCount("x".repeat(perLine + 1), 8)).toBe(2);
   });
 });
 
@@ -103,6 +162,21 @@ describe("hitTestNode", () => {
       lowZoom,
     );
     expect(hit?.id).toBe("a");
+  });
+
+  it("hits the bottom of a captioned plaque, which is taller than a bare one", () => {
+    const node = makeNode({ caption: "Waiting on Draft", captionTone: "blocked" });
+    const box = plaqueBox(node);
+    const hit = hitTestNode(
+      [node],
+      {
+        x: camera.x + box.x + box.width / 2,
+        y: camera.y + box.y + box.height - 1,
+      },
+      camera,
+    );
+    expect(hit?.id).toBe("a");
+    expect(box.height).toBeGreaterThan(plaqueBox(makeNode()).height);
   });
 
   it("scales the socket radius with zoom and prefers later nodes", () => {

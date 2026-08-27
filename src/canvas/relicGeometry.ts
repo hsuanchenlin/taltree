@@ -9,10 +9,29 @@ import type { Camera, LaidOutEdge, LaidOutNode } from "../graph";
 export const SOCKET_RADIUS = 36;
 export const SOCKET_TOP = 8;
 export const PLAQUE_TOP = 88;
-export const PLAQUE_HEIGHT = 34;
-export const PLAQUE_SIDE_INSET = 15;
+export const PLAQUE_WIDTH = 170;
+export const PLAQUE_TEXT_INSET = 8;
+export const PLAQUE_WRAP_WIDTH = PLAQUE_WIDTH - PLAQUE_TEXT_INSET * 2;
+/** Socket center -> plaque top, in world units. `world.ts` places the plaque with this. */
+export const PLAQUE_OFFSET_Y = PLAQUE_TOP - SOCKET_TOP - SOCKET_RADIUS;
 /** At or above this zoom every node shows its full plaque; below it only highlighted nodes do. */
 export const LOD_READABLE_K = 0.85;
+
+const PLAQUE_PAD_TOP = 4;
+const PLAQUE_PAD_BOTTOM = 5;
+const PLAQUE_TITLE_GAP = 1;
+const PLAQUE_CAPTION_GAP = 3;
+const TITLE_LINE_HEIGHT = 17;
+const SUB_LINE_HEIGHT = 15;
+const CAPTION_LINE_HEIGHT = 15;
+/**
+ * Deliberately wider than any glyph the plaque fonts draw at their size, so the
+ * predicted line count is never below the one Pixi wraps to.
+ */
+const TITLE_CHAR_WIDTH = 8;
+const CAPTION_CHAR_WIDTH = 7;
+/** Ranks sit 200 world units apart; a plaque must never reach the rank below. */
+const PLAQUE_MAX_HEIGHT = 200 - PLAQUE_TOP;
 
 export interface Point {
   x: number;
@@ -33,12 +52,45 @@ export function socketCenter(node: Pick<LaidOutNode, "x" | "y" | "width">): Poin
   };
 }
 
-export function plaqueBox(node: Pick<LaidOutNode, "x" | "y" | "width">): Rect {
+/** How many wrapped lines a plaque string needs, never fewer than Pixi produces. */
+export function wrappedLineCount(text: string, charWidth: number): number {
+  if (text.length === 0) return 0;
+  return Math.ceil((text.length * charWidth) / PLAQUE_WRAP_WIDTH);
+}
+
+/**
+ * The plaque's drawn height for a node. `world.ts` grows the plaque background
+ * to fit the title, cost/kind line, and optional caption; this reproduces that
+ * from the same content so the hit box covers the whole visible plaque.
+ */
+export function plaqueHeight(
+  node: Pick<LaidOutNode, "title" | "caption">,
+): number {
+  const titleLines = Math.max(1, wrappedLineCount(node.title, TITLE_CHAR_WIDTH));
+  const captionLines = node.caption
+    ? wrappedLineCount(node.caption, CAPTION_CHAR_WIDTH)
+    : 0;
+  const captionBlock =
+    captionLines === 0 ? 0 : captionLines * CAPTION_LINE_HEIGHT + PLAQUE_CAPTION_GAP;
+  return Math.min(
+    PLAQUE_MAX_HEIGHT,
+    PLAQUE_PAD_TOP +
+      titleLines * TITLE_LINE_HEIGHT +
+      PLAQUE_TITLE_GAP +
+      SUB_LINE_HEIGHT +
+      captionBlock +
+      PLAQUE_PAD_BOTTOM,
+  );
+}
+
+export function plaqueBox(
+  node: Pick<LaidOutNode, "x" | "y" | "width" | "title" | "caption">,
+): Rect {
   return {
-    x: node.x + PLAQUE_SIDE_INSET,
+    x: node.x + node.width / 2 - PLAQUE_WIDTH / 2,
     y: node.y + PLAQUE_TOP,
-    width: node.width - PLAQUE_SIDE_INSET * 2,
-    height: PLAQUE_HEIGHT,
+    width: PLAQUE_WIDTH,
+    height: plaqueHeight(node),
   };
 }
 

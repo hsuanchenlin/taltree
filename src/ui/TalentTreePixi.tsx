@@ -1,6 +1,6 @@
 import { Application } from "@pixi/react";
 import type { Application as PixiApplication } from "pixi.js";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RelicWorld } from "../canvas/world";
 import type { Camera, LaidOutGraph } from "../graph";
 
@@ -14,6 +14,14 @@ interface TalentTreePixiProps {
   tree: LaidOutGraph;
   camera: Camera;
 }
+
+/**
+ * `@pixi/react` awaits `app.init()` inside a layout effect and never catches
+ * it, so a rejected init would silently leave a blank slab forever. We watch
+ * for the rejection and, as a backstop, for an init that simply never lands,
+ * then rethrow during render so `PixiErrorBoundary` swaps in the DOM world.
+ */
+const INIT_TIMEOUT_MS = 10_000;
 
 function resolveResolution(): number {
   if (typeof window === "undefined") return 1;
@@ -30,15 +38,41 @@ function resolveResolution(): number {
 export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<RelicWorld | null>(null);
+  const initialisedRef = useRef(false);
+  const [initialised, setInitialised] = useState(false);
+  const [initFailure, setInitFailure] = useState<Error | null>(null);
   const latestRef = useRef({ tree, camera });
   latestRef.current = { tree, camera };
 
   const handleInit = useCallback((app: PixiApplication) => {
+    initialisedRef.current = true;
     const world = new RelicWorld(app);
     worldRef.current = world;
     world.update(latestRef.current.tree);
     world.setCamera(latestRef.current.camera);
+    setInitialised(true);
   }, []);
+
+  useEffect(() => {
+    if (initialised) return;
+    function fail(reason: unknown) {
+      if (initialisedRef.current) return;
+      setInitFailure(
+        reason instanceof Error ? reason : new Error(String(reason)),
+      );
+    }
+    function onRejection(event: PromiseRejectionEvent) {
+      fail(event.reason);
+    }
+    const timer = window.setTimeout(() => {
+      fail(new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`));
+    }, INIT_TIMEOUT_MS);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [initialised]);
 
   useEffect(() => {
     return () => {
@@ -54,6 +88,8 @@ export default function TalentTreePixi({ tree, camera }: TalentTreePixiProps) {
   useEffect(() => {
     worldRef.current?.setCamera(camera);
   }, [camera]);
+
+  if (initFailure) throw initFailure;
 
   return (
     <div ref={hostRef} className="tree-pixi-host">
