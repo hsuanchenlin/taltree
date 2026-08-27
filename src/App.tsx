@@ -25,6 +25,7 @@ export function App() {
   const planner = usePlanner();
   const [dialog, setDialog] = useState<Dialog>({ type: "none" });
   const [viewMode, setViewMode] = useState<ViewMode>("tree");
+  const [focusSignal, setFocusSignal] = useState(0);
   const [mobileDetail, setMobileDetail] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const plannerRef = useRef(planner);
@@ -106,6 +107,12 @@ export function App() {
         case "v":
           event.preventDefault();
           setViewMode((mode) => (mode === "tree" ? "list" : "tree"));
+          break;
+        case "f":
+          event.preventDefault();
+          if (viewModeRef.current === "tree" && current.selectedId) {
+            setFocusSignal((signal) => signal + 1);
+          }
           break;
         case "c":
           event.preventDefault();
@@ -277,6 +284,7 @@ export function App() {
               tree={tree}
               remaining={planner.remaining}
               explanation={planner.explanation}
+              focusSignal={focusSignal}
               onSelect={(id) => {
                 planner.select(id);
                 setMobileDetail(true);
@@ -314,6 +322,7 @@ export function App() {
         <p className="shortcuts">
           <span><kbd>j</kbd> <kbd>k</kbd> move</span>
           <span><kbd>←</kbd> <kbd>→</kbd> tree</span>
+          <span><kbd>f</kbd> focus</span>
           <span><kbd>c</kbd> complete</span>
           <span><kbd>d</kbd> defer</span>
           <span><kbd>v</kbd> view</span>

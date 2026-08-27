@@ -7,7 +7,10 @@ import {
   edgeCurve,
   hitTestNode,
   LOD_READABLE_K,
+  PLAQUE_MAX_SCALE,
   plaqueBox,
+  plaqueHitBox,
+  plaqueScale,
   plaqueHeight,
   PLAQUE_TOP,
   PLAQUE_WIDTH,
@@ -297,5 +300,71 @@ describe("edge curves and dashes", () => {
       );
       expect(gap).toBeGreaterThan(2);
     }
+  });
+});
+
+describe("plaqueScale (LOD legibility)", () => {
+  it("renders plaques 1:1 at and above the readable zoom", () => {
+    expect(plaqueScale(LOD_READABLE_K)).toBe(1);
+    expect(plaqueScale(1.6)).toBe(1);
+  });
+
+  it("counter-scales below the threshold so highlighted plaques stay readable", () => {
+    expect(plaqueScale(0.5)).toBeCloseTo(LOD_READABLE_K / 0.5, 10);
+    expect(plaqueScale(0.425)).toBeCloseTo(2, 10);
+  });
+
+  it("caps the growth so a plaque at minimum zoom cannot swamp the board", () => {
+    expect(plaqueScale(0.25)).toBe(PLAQUE_MAX_SCALE);
+    expect(plaqueScale(0.01)).toBe(PLAQUE_MAX_SCALE);
+  });
+});
+
+describe("plaqueHitBox", () => {
+  it("matches the laid-out plaque at readable zoom", () => {
+    const node = makeNode();
+    expect(plaqueHitBox(node, 1)).toEqual(plaqueBox(node));
+  });
+
+  it("grows around the plaque anchor (top center under the socket)", () => {
+    const node = makeNode();
+    const k = 0.5;
+    const scale = plaqueScale(k);
+    const base = plaqueBox(node);
+    const hit = plaqueHitBox(node, k);
+    const anchorX = node.x + node.width / 2;
+    expect(hit.y).toBe(base.y);
+    expect(hit.x + hit.width / 2).toBeCloseTo(anchorX, 10);
+    expect(hit.width).toBeCloseTo(base.width * scale, 10);
+    expect(hit.height).toBeCloseTo(base.height * scale, 10);
+  });
+});
+
+describe("hitTestNode with LOD-scaled plaques", () => {
+  it("hits the enlarged plaque of a selected node when zoomed out", () => {
+    const node = makeNode({ selected: true });
+    const k = 0.5;
+    const camera = { x: 0, y: 0, k };
+    const box = plaqueHitBox(node, k);
+    const point = {
+      x: (box.x + box.width - 2) * k,
+      y: (box.y + box.height - 2) * k,
+    };
+    // The same point sits outside the unscaled plaque, so only the scaled
+    // hit box can catch it.
+    const base = plaqueBox(node);
+    expect(point.x).toBeGreaterThan((base.x + base.width) * k);
+    expect(hitTestNode([node], point, camera)?.id).toBe("a");
+  });
+
+  it("still ignores the hidden plaque of a plain node when zoomed out", () => {
+    const node = makeNode();
+    const camera = { x: 0, y: 0, k: 0.5 };
+    const box = plaqueHitBox(node, camera.k);
+    const point = {
+      x: (box.x + box.width / 2) * camera.k,
+      y: (box.y + box.height / 2) * camera.k,
+    };
+    expect(hitTestNode([node], point, camera)).toBeNull();
   });
 });

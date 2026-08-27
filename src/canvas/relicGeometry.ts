@@ -16,6 +16,8 @@ export const PLAQUE_WRAP_WIDTH = PLAQUE_WIDTH - PLAQUE_TEXT_INSET * 2;
 export const PLAQUE_OFFSET_Y = PLAQUE_TOP - SOCKET_TOP - SOCKET_RADIUS;
 /** At or above this zoom every node shows its full plaque; below it only highlighted nodes do. */
 export const LOD_READABLE_K = 0.85;
+/** Most a highlighted plaque may grow past its laid-out size at very low zoom. */
+export const PLAQUE_MAX_SCALE = 2.5;
 
 export const PLAQUE_PAD_TOP = 4;
 export const PLAQUE_PAD_BOTTOM = 5;
@@ -163,6 +165,39 @@ export function plaqueBox(
   };
 }
 
+/**
+ * Counter-scale a plaque keeps so highlighted plaques (selected, hovered,
+ * unlocks-next) stay readable below the LOD threshold instead of shrinking
+ * with the world. At or above `LOD_READABLE_K` plaques render 1:1; the
+ * counter-scale is capped so a plaque at minimum zoom cannot swamp the board.
+ */
+export function plaqueScale(cameraK: number): number {
+  if (cameraK >= LOD_READABLE_K) return 1;
+  return Math.min(PLAQUE_MAX_SCALE, LOD_READABLE_K / Math.max(cameraK, 0.01));
+}
+
+/**
+ * The plaque box as actually rendered at a given zoom: `plaqueBox` grown by
+ * `plaqueScale` around the plaque's anchor (top center, under the socket).
+ * `world.ts` scales the plaque container by the same factor, and the hit test
+ * uses this box, so what is drawn and what is clickable never disagree.
+ */
+export function plaqueHitBox(
+  node: Pick<LaidOutNode, "x" | "y" | "width" | "title" | "caption">,
+  cameraK: number,
+): Rect {
+  const box = plaqueBox(node);
+  const scale = plaqueScale(cameraK);
+  if (scale === 1) return box;
+  const anchorX = node.x + node.width / 2;
+  return {
+    x: anchorX + (box.x - anchorX) * scale,
+    y: box.y,
+    width: box.width * scale,
+    height: box.height * scale,
+  };
+}
+
 export function plaqueVisible(
   node: Pick<LaidOutNode, "id" | "selected" | "unlocksIfCompleted">,
   cameraK: number,
@@ -194,7 +229,7 @@ export function hitTestNode(
     const dy = point.y - sy;
     if (dx * dx + dy * dy <= radius * radius) return node;
     if (plaqueVisible(node, camera.k, hoveredId)) {
-      const box = plaqueBox(node);
+      const box = plaqueHitBox(node, camera.k);
       if (
         point.x >= camera.x + box.x * camera.k &&
         point.x <= camera.x + (box.x + box.width) * camera.k &&
