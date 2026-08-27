@@ -1,9 +1,22 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type { ReactNode } from "react";
+import { canUseWebGL } from "../canvas/webgl";
+import { hitTestNode } from "../canvas/relicGeometry";
 import type { ChoiceExplanation } from "../domain/types";
-import type { Camera, LaidOutGraph, LaidOutNode, ViewportSize } from "../graph";
+import type { Camera, LaidOutGraph, ViewportSize } from "../graph";
 import { ensureVisible, fitCamera, READABLE_CAMERA, zoomAbout } from "../graph";
 import { KIND_LABEL, pointsLabel } from "./format";
 import { KindMark } from "./glyphs";
+import { TalentTreeDomWorld } from "./TalentTreeDomWorld";
 import { isPointInsideViewport } from "./talentTreeInteraction";
 
 interface TalentTreeProps {
@@ -17,6 +30,10 @@ const ZOOM_STEP = 1.15;
 const WHEEL_STEP = 1.08;
 const PAN_THRESHOLD = 4;
 
+// The relic slab (PixiJS) lives in its own chunk so first paint and the list
+// view never wait on it. WebGL-less machines keep the SVG/DOM world.
+const TalentTreePixi = lazy(() => import("./TalentTreePixi"));
+
 interface PanGesture {
   pointerId: number;
   startX: number;
@@ -26,13 +43,39 @@ interface PanGesture {
   moved: boolean;
 }
 
+interface PixiErrorBoundaryProps {
+  fallback: ReactNode;
+  onFailed: () => void;
+  children: ReactNode;
+}
+
+/** Any Pixi init/render failure degrades to the SVG/DOM world. */
+class PixiErrorBoundary extends Component<
+  PixiErrorBoundaryProps,
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    console.error("Relic slab renderer failed; falling back to the DOM tree.", error);
+    this.props.onFailed();
+  }
+
+  render(): ReactNode {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 export function TalentTree({
   tree,
   remaining,
   explanation,
   onSelect,
 }: TalentTreeProps) {
-  const markerId = useId().replace(/:/g, "");
   const viewportRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
@@ -40,9 +83,26 @@ export function TalentTree({
   const suppressClickRef = useRef(false);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, k: 1 });
   const [panning, setPanning] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [pixiFailed, setPixiFailed] = useState(false);
   const layoutKey = `${tree.width}x${tree.height}:${tree.nodes.map((node) => node.id).join(",")}`;
   const selectedId = tree.nodes.find((node) => node.selected)?.id ?? null;
   const hasNodes = tree.nodes.length > 0;
+  // Intent to mount the slab, versus the slab actually rendering. Everything
+  // the relic surface owns - the dark board, its hit test, its screen-reader
+  // list - must follow the latter, or the DOM fallback inherits a dark
+  // background it was never styled for and a second, invisible click target.
+  const usePixi = hasNodes && canUseWebGL();
+  const pixiLive = usePixi && !pixiFailed;
+  const onPixiFailed = useCallback(() => setPixiFailed(true), []);
+
+  // The boundary forgets its own failure whenever it unmounts, which is exactly
+  // when `usePixi` goes false. This copy has to forget on the same transition,
+  // or a slab that remounts and initialises fine stays marked as failed.
+  useEffect(() => {
+    if (!usePixi) return;
+    return () => setPixiFailed(false);
+  }, [usePixi]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -201,7 +261,7 @@ export function TalentTree({
       ) : (
         <div
           ref={viewportRef}
-          className={`tree-viewport${panning ? " panning" : ""}`}
+          className={`tree-viewport${panning ? " panning" : ""}${pixiLive ? " relic" : ""}`}
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === "+" || event.key === "=") {
@@ -232,102 +292,79 @@ export function TalentTree({
               moved: false,
             };
           }}
+          onPointerMove={(event) => {
+            if (!pixiLive || panRef.current?.moved) {
+              setHoveredId(null);
+              return;
+            }
+            const viewport = viewportRef.current;
+            if (!viewport) return;
+            const rect = viewport.getBoundingClientRect();
+            const hit = hitTestNode(
+              treeRef.current.nodes,
+              { x: event.clientX - rect.left, y: event.clientY - rect.top },
+              camera,
+              hoveredId,
+            );
+            setHoveredId(hit?.id ?? null);
+          }}
+          onPointerLeave={() => setHoveredId(null)}
           onClickCapture={(event) => {
             if (!suppressClickRef.current) return;
             suppressClickRef.current = false;
             event.preventDefault();
             event.stopPropagation();
           }}
+          onClick={(event) => {
+            if (!pixiLive) return;
+            const viewport = viewportRef.current;
+            if (!viewport) return;
+            const rect = viewport.getBoundingClientRect();
+            const hit = hitTestNode(
+              treeRef.current.nodes,
+              { x: event.clientX - rect.left, y: event.clientY - rect.top },
+              camera,
+              hoveredId,
+            );
+            if (hit) onSelect(hit.id);
+          }}
         >
-          <div
-            className="tree-world"
-            style={{
-              width: tree.width,
-              height: tree.height,
-              transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.k})`,
-            }}
-          >
-            <svg
-              className="tree-edges"
-              width={tree.width}
-              height={tree.height}
-              viewBox={`0 0 ${tree.width} ${tree.height}`}
-              aria-hidden="true"
-              focusable="false"
+          {usePixi ? (
+            <PixiErrorBoundary
+              onFailed={onPixiFailed}
+              fallback={
+                <TalentTreeDomWorld tree={tree} camera={camera} onSelect={onSelect} />
+              }
             >
-              <defs>
-                <marker
-                  id={`${markerId}-ready`}
-                  markerWidth="8"
-                  markerHeight="8"
-                  refX="6"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path d="M0 0 L8 4 L0 8 Z" fill="var(--completed)" />
-                </marker>
-                <marker
-                  id={`${markerId}-blocking`}
-                  markerWidth="8"
-                  markerHeight="8"
-                  refX="6"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path d="M0 0 L8 4 L0 8 Z" fill="var(--blocked)" />
-                </marker>
-                <marker
-                  id={`${markerId}-unlock`}
-                  markerWidth="8"
-                  markerHeight="8"
-                  refX="6"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path d="M0 0 L8 4 L0 8 Z" fill="var(--eligible)" />
-                </marker>
-              </defs>
-              {tree.edges.map((item) => (
-                <path
-                  key={`${item.from}->${item.to}`}
-                  className={`tree-edge tree-edge-${item.kind}`}
-                  d={item.d}
-                  data-edge={`${item.from}->${item.to}`}
-                  data-edge-kind={item.kind}
-                  markerEnd={`url(#${markerId}-${item.kind})`}
-                />
-              ))}
-            </svg>
-            {tree.nodes.map((node) => (
-              <button
-                key={node.id}
-                type="button"
-                id={`tree-node-${node.id}`}
-                className={nodeClass(node)}
-                style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
-                tabIndex={node.selected ? 0 : -1}
-                data-node-id={node.id}
-                data-kind={node.kind}
-                data-selected={node.selected ? "true" : "false"}
-                data-unlocks={node.unlocksIfCompleted ? "true" : "false"}
-                data-exceeds={node.exceedsBudget ? "true" : "false"}
-                aria-current={node.selected ? "true" : undefined}
-                aria-label={nodeLabel(node)}
-                onClick={() => onSelect(node.id)}
+              <Suspense
+                fallback={
+                  <div className="tree-loading" role="status">
+                    Loading the tree canvas…
+                  </div>
+                }
               >
-                <span className="tree-node-head">
-                  <KindMark kind={node.kind} />
-                  <span className="tree-node-cost">{pointsLabel(node.cost)}</span>
-                </span>
-                <span className="tree-node-title">{node.title}</span>
-                {node.caption ? (
-                  <span className={`tree-node-note tone-${node.captionTone}`}>{node.caption}</span>
-                ) : null}
-              </button>
-            ))}
-          </div>
+                <TalentTreePixi
+                  tree={tree}
+                  camera={camera}
+                  hoveredId={hoveredId}
+                />
+              </Suspense>
+            </PixiErrorBoundary>
+          ) : (
+            <TalentTreeDomWorld tree={tree} camera={camera} onSelect={onSelect} />
+          )}
         </div>
       )}
+      {pixiLive ? (
+        <ol className="sr-only" aria-label="Tree nodes">
+          {tree.nodes.map((node) => (
+            <li key={node.id}>
+              {node.title}, {KIND_LABEL[node.kind]}, {pointsLabel(node.cost)}
+              {node.caption ? `, ${node.caption}` : ""}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       <p className="tree-hint quiet">
         Drag the board to pan. Scroll, or use the zoom controls, when the tree is denser than the board.
       </p>
@@ -337,21 +374,6 @@ export function TalentTree({
 
 function sizeOf(viewport: HTMLElement): ViewportSize {
   return { width: viewport.clientWidth, height: viewport.clientHeight };
-}
-
-function nodeClass(node: LaidOutNode): string {
-  const parts = ["tree-node", `kind-${node.kind}`];
-  if (node.selected) parts.push("selected");
-  if (node.unlocksIfCompleted) parts.push("unlocks");
-  if (node.exceedsBudget) parts.push("exceeds");
-  return parts.join(" ");
-}
-
-function nodeLabel(node: LaidOutNode): string {
-  const bits = [node.title, KIND_LABEL[node.kind], pointsLabel(node.cost)];
-  if (node.caption) bits.push(node.caption);
-  if (node.selected) bits.push("selected");
-  return bits.join(", ");
 }
 
 function spendCopy(remaining: number, explanation: ChoiceExplanation | null): string {
