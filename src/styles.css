@@ -380,6 +380,31 @@ button:disabled {
   outline-offset: 2px;
 }
 
+/* Relic slab: the only dark surface. Everything around it stays parchment. */
+.tree-viewport.relic {
+  background:
+    radial-gradient(1000px 420px at 50% -10%, rgba(89, 224, 242, 0.05), transparent 60%),
+    radial-gradient(700px 500px at 85% 100%, rgba(36, 86, 61, 0.12), transparent 55%),
+    #0c1016;
+}
+
+.tree-pixi-host {
+  position: absolute;
+  inset: 0;
+}
+
+.tree-pixi-host canvas {
+  display: block;
+}
+
+.tree-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #c7bdab;
+  font-style: italic;
+}
+
 .tree-viewport.panning,
 .tree-viewport.panning .tree-node {
   cursor: grabbing;
