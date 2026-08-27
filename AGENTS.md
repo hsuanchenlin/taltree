@@ -18,7 +18,7 @@ Open the app at the Vite URL printed by `npm run dev` (default `http://localhost
 ## Architecture
 
 - Domain rules live in [`src/domain/plan.ts`](src/domain/plan.ts). Eligibility, cycle rejection, budget, unlock/block explanations, completion, defer, and rollover must stay there. The UI reads `inspect` and applies command results; it must not reimplement those rules.
-- Talent-tree projection, layered layout, spatial neighbor lookup, and camera math (fit, zoom-about-a-point, keep-selection-visible) live in [`src/graph/`](src/graph/). The canvas reads `buildTalentTree`; it must not re-derive kinds or unlocks, and it must not reimplement camera geometry inline.
+- Talent-tree projection, layered layout, spatial neighbor lookup, and camera math (fit, zoom-about-a-point, keep-selection-visible) live in [`src/graph/`](src/graph/). The tree UI reads `buildTalentTree`; it must not re-derive kinds or unlocks, and it must not reimplement camera geometry inline.
 - The person-owned document is `Plan` in [`src/domain/types.ts`](src/domain/types.ts). Persistence is [`src/persist/storage.ts`](src/persist/storage.ts).
 - Domain language: [`CONTEXT.md`](CONTEXT.md). Local-first decision: [`docs/adr/0001-local-first-json.md`](docs/adr/0001-local-first-json.md).
 - Setup and usage: [`README.md`](README.md). The talent tree is the primary workspace; keep the list/detail view as the accessible keyboard-operable alternative.

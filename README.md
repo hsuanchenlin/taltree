@@ -32,7 +32,7 @@ On first visit Taltree loads a demo plan, **A full Thursday**, so you can see a 
 The **talent tree** is the main workspace. Independent chains sit side by side; hard prerequisites sit above what they unlock. Node shape, glyph, and label all mark state (Eligible, Blocked, Deferred today, Completed), not colour alone. The **List** view is the same plan grouped for keyboard browsing.
 
 1. Set **Daily budget** (points are your unit: hours, energy, or attention). Remaining budget stays visible on the tree and updates with spend.
-2. Select a node on the tree. The strip above the canvas states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
+2. Select a node on the tree. The strip above the board states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
 3. The detail pane repeats **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this**.
 4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
 5. **New node** / **Edit** set title, cost, and hard prerequisites. Directed cycles are rejected with the loop named.
