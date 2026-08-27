@@ -17,6 +17,7 @@ import {
   PLAQUE_TITLE_GAP,
   PLAQUE_WIDTH,
   PLAQUE_WRAP_WIDTH,
+  plaqueHeight,
   plaqueScale,
   plaqueVisible,
   renderedPlaqueHeight,
@@ -368,7 +369,10 @@ export class RelicWorld {
         : 0xc7bdab;
     }
 
-    this.layoutPlaque(view, node, renderedPlaqueHeight(node, this.cameraK));
+    const height = plaqueVisible(node, this.cameraK, this.hoveredId)
+      ? renderedPlaqueHeight(node, this.cameraK)
+      : plaqueHeight(node);
+    this.layoutPlaque(view, node, height);
   }
 
   private layoutPlaque(view: NodeView, node: LaidOutNode, height: number): void {
@@ -404,7 +408,7 @@ export class RelicWorld {
     for (const view of this.nodes.values()) {
       const visible = plaqueVisible(view.node, this.cameraK, this.hoveredId);
       const height = renderedPlaqueHeight(view.node, this.cameraK);
-      if (height !== view.renderedPlaqueHeight) {
+      if (visible && height !== view.renderedPlaqueHeight) {
         this.layoutPlaque(view, view.node, height);
       }
       view.plaque.scale.set(plaqueScale(view.node, this.cameraK));
