@@ -9,6 +9,7 @@ export {
   ensureVisible,
   fitCamera,
   glideStopped,
+  initialCamera,
   lerpCamera,
   READABLE_CAMERA,
   rebaseDragOrigin,

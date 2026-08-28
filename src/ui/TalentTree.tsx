@@ -27,8 +27,8 @@ import {
   easeOutCubic,
   ensureVisible,
   fitCamera,
+  initialCamera,
   lerpCamera,
-  READABLE_CAMERA,
   rebaseDragOrigin,
   shouldGlide,
   stepMomentum,
@@ -245,11 +245,7 @@ export function TalentTree({
     if (!viewport) return;
     stopMotion();
     const selected = treeRef.current.nodes.find((node) => node.selected);
-    if (!selected || viewport.clientWidth <= 0) {
-      applyCamera(READABLE_CAMERA);
-      return;
-    }
-    applyCamera(ensureVisible(selected, READABLE_CAMERA, sizeOf(viewport)));
+    applyCamera(initialCamera(treeRef.current, sizeOf(viewport), selected));
   }, [layoutKey, applyCamera, stopMotion]);
 
   useEffect(() => {

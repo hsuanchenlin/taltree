@@ -34,24 +34,26 @@ export default function TalentTreePixi({
   camera,
   hoveredId,
 }: TalentTreePixiProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<RelicWorld | null>(null);
   const [initFailure, setInitFailure] = useState<Error | null>(null);
   const latestRef = useRef({ tree, camera, hoveredId });
   latestRef.current = { tree, camera, hoveredId };
 
   useLayoutEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const host = canvas.parentElement;
+    const host = hostRef.current;
     if (!host) return;
     let active = true;
+    // The effect owns its canvas, not React. A canvas element holds exactly one
+    // WebGL context, so under StrictMode's mount-cleanup-mount (or a fast
+    // refresh) the first application's deferred destroy would otherwise kill
+    // the context its replacement is already rendering with - the blank,
+    // error-free slab this guards against.
+    const canvas = document.createElement("canvas");
+    host.appendChild(canvas);
     const app = new PixiApplication();
     function dispose() {
       try {
-        // React owns the canvas element. In development StrictMode the first
-        // effect cleanup can finish after the replacement effect has mounted
-        // against that same canvas, so Pixi must never remove the view.
         app.destroy(false, { children: true });
         return;
       } catch {
@@ -67,6 +69,14 @@ export default function TalentTreePixi({
         }
       }
     }
+    // A lost context presents as a blank slab with no console error. Degrade
+    // to the DOM tree through the error boundary instead of staying blank.
+    function onContextLost() {
+      if (active) {
+        setInitFailure(new Error("WebGL context lost"));
+      }
+    }
+    canvas.addEventListener("webglcontextlost", onContextLost);
     const timer = window.setTimeout(() => {
       if (active) {
         setInitFailure(
@@ -112,10 +122,12 @@ export default function TalentTreePixi({
     return () => {
       active = false;
       window.clearTimeout(timer);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
       worldRef.current?.destroy();
       worldRef.current = null;
       dispose();
       void init.then(dispose, dispose);
+      canvas.remove();
     };
   }, []);
 
@@ -133,9 +145,5 @@ export default function TalentTreePixi({
 
   if (initFailure) throw initFailure;
 
-  return (
-    <div className="tree-pixi-host">
-      <canvas ref={canvasRef} />
-    </div>
-  );
+  return <div className="tree-pixi-host" ref={hostRef} />;
 }
