@@ -136,7 +136,7 @@ export default function TalentTreePixi({
             try {
               app.resize();
             } catch (error) {
-              recordDiagnosticEvent("pixi.resize", error);
+              failRenderer("pixi.resize", error);
             }
             renderNow();
           });
@@ -175,7 +175,7 @@ export default function TalentTreePixi({
         try {
           app.resize();
         } catch (error) {
-          recordDiagnosticEvent("pixi.resize", error);
+          failRenderer("pixi.resize", error);
         }
         renderNow();
         renderNowRef.current = renderNow;
