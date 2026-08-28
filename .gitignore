@@ -3,6 +3,9 @@ node_modules
 dist
 *.local
 
+# Launcher runtime state (dev-server pidfiles)
+.taltree
+
 # Logs and caches
 npm-debug.log*
 yarn-debug.log*
