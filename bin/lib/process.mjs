@@ -42,10 +42,53 @@ export function writePidfile(path, record, { write = writeFileSync, mkdir = mkdi
   write(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
-export function claimPidfile(path, record, { write = writeFileSync, mkdir = mkdirSync } = {}) {
+export function claimPidfile(
+  path,
+  record,
+  {
+    write = writeFileSync,
+    mkdir = mkdirSync,
+    read = readPidfile,
+    remove = removePidfile,
+    isAlive = isProcessAlive,
+    commandOf = readProcessCommand,
+  } = {},
+) {
+  const create = () => write(path, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
   try {
     mkdir(dirname(path), { recursive: true });
-    write(path, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
+    create();
+    return true;
+  } catch (error) {
+    if (error?.code !== "EEXIST") return false;
+  }
+
+  const existing = read(path);
+  if (existing) {
+    const serverCommand = commandOf(existing.serverPid);
+    const serverAlive = existing.serverPid !== null && isAlive(existing.serverPid);
+    const serverHoldsPort = serverAlive && commandUsesPort(serverCommand, record.port);
+    const launcherAlive =
+      existing.pid !== null &&
+      isAlive(existing.pid) &&
+      (existing.pid !== existing.serverPid || !isOwnViteProcess(serverCommand, { root: existing.root ?? record.root }));
+    if (launcherAlive || serverHoldsPort) return false;
+  }
+  if (!remove(path, { ownerPid: existing?.pid ?? null })) return false;
+
+  try {
+    create();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function updateClaimedPidfile(path, record, { read = readPidfile, write = writePidfile } = {}) {
+  const existing = read(path);
+  if (!existing || existing.pid !== record.pid) return false;
+  try {
+    write(path, record);
     return true;
   } catch {
     return false;
@@ -306,27 +349,36 @@ export async function reclaimPort({
  * this user cannot write, and a launcher that refused to start over an unwritable
  * pidfile would be worse than one that simply cannot auto-heal later.
  */
-export function createPidfileHandle({ root, port, ownerPid = process.pid, claim = claimPidfile, remove = removePidfile }) {
+export function createPidfileHandle({
+  root,
+  port,
+  ownerPid = process.pid,
+  claim = claimPidfile,
+  update = updateClaimedPidfile,
+  remove = removePidfile,
+}) {
   const path = pidfilePath(root, port);
   let written = false;
+  const makeRecord = (serverPid) => ({
+    pid: ownerPid,
+    serverPid: serverPid ?? ownerPid,
+    port,
+    root,
+    startedAt: new Date().toISOString(),
+  });
   return {
     path,
-    record(serverPid) {
+    claim() {
       try {
-        written = claim(
-          path,
-          {
-            pid: ownerPid,
-            serverPid: serverPid ?? ownerPid,
-            port,
-            root,
-            startedAt: new Date().toISOString(),
-          },
-        );
+        written = claim(path, makeRecord(ownerPid));
       } catch {
         written = false;
       }
       return written;
+    },
+    record(serverPid) {
+      if (!written && !this.claim()) return false;
+      return update(path, makeRecord(serverPid));
     },
     clear() {
       if (!written) return;

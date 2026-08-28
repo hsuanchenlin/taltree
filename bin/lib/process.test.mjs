@@ -75,6 +75,14 @@ describe("pidfile", () => {
     expect(claimPidfile(path, { pid: 20, serverPid: 21, port: 5173 })).toBe(false);
     expect(readPidfile(path)).toMatchObject({ pid: 10, serverPid: 11 });
   });
+
+  it("takes over a stale pidfile for a free port", () => {
+    const path = pidfilePath(root, 5173);
+    writePidfile(path, { pid: DEAD_PID, serverPid: DEAD_PID, port: 5173 });
+
+    expect(claimPidfile(path, { pid: 20, serverPid: 20, port: 5173 })).toBe(true);
+    expect(readPidfile(path)).toMatchObject({ pid: 20, serverPid: 20 });
+  });
 });
 
 describe("createPidfileHandle", () => {
@@ -120,12 +128,16 @@ describe("createPidfileHandle", () => {
   it("keeps the bind winner's record when a contender clears without claiming", () => {
     const winner = createPidfileHandle({ root, port: 5173, ownerPid: 4242 });
     const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777 });
+    const nextPort = createPidfileHandle({ root, port: 5174, ownerPid: 7777 });
+    expect(winner.claim()).toBe(true);
     winner.record(4243);
 
-    expect(contender.record(7778)).toBe(false);
+    expect(contender.claim()).toBe(false);
     contender.clear();
+    expect(nextPort.claim()).toBe(true);
 
     expect(readPidfile(winner.path)).toMatchObject({ pid: 4242, serverPid: 4243 });
+    expect(readPidfile(nextPort.path)).toMatchObject({ pid: 7777, port: 5174 });
   });
 });
 
