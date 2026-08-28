@@ -9,7 +9,9 @@ import {
   ensureVisible,
   fitCamera,
   glideStopped,
+  initialCamera,
   lerpCamera,
+  READABLE_CAMERA,
   rebaseDragOrigin,
   shouldGlide,
   stepMomentum,
@@ -94,6 +96,40 @@ describe("fitCamera", () => {
       y: 0,
       k: 1,
     });
+  });
+});
+
+describe("initialCamera", () => {
+  it("opens on the fitted, centred camera when nothing is selected", () => {
+    const tree = { width: 2000, height: 300 };
+    expect(initialCamera(tree, VIEWPORT)).toEqual(fitCamera(tree, VIEWPORT));
+  });
+
+  it("keeps the fit when the selected node already sits inside it", () => {
+    const tree = { width: 400, height: 300 };
+    const fitted = fitCamera(tree, VIEWPORT);
+    expect(initialCamera(tree, VIEWPORT, box(100, 80))).toEqual(fitted);
+  });
+
+  it("pans off the fit to reveal a selection the clamped zoom left outside", () => {
+    const tree = { width: 100000, height: 100000 };
+    const camera = initialCamera(tree, VIEWPORT, box(99000, 99000));
+    expect(camera.k).toBe(CAMERA_LIMITS.minZoom);
+    const margin = CAMERA_LIMITS.visibleMargin;
+    expect(camera.x + 99000 * camera.k + 200 * camera.k).toBeCloseTo(
+      VIEWPORT.width - margin,
+      10,
+    );
+    expect(camera.y + 99000 * camera.k + 124 * camera.k).toBeCloseTo(
+      VIEWPORT.height - margin,
+      10,
+    );
+  });
+
+  it("falls back to the readable origin before the viewport is measured", () => {
+    expect(initialCamera({ width: 900, height: 400 }, { width: 0, height: 0 })).toEqual(
+      READABLE_CAMERA,
+    );
   });
 });
 

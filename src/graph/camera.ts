@@ -112,6 +112,23 @@ export function ensureVisible(
   return { ...camera, x, y };
 }
 
+/**
+ * The camera a freshly laid-out tree opens with: the whole graph centred and
+ * fitted inside the viewport, then panned so a selected node stays inside the
+ * margins when the fit had to clamp at the minimum zoom. A viewport that has
+ * not been measured yet offers nothing to fit against, so it falls back to the
+ * readable origin.
+ */
+export function initialCamera(
+  tree: Pick<LaidOutGraph, "width" | "height">,
+  viewport: ViewportSize,
+  selected?: Pick<LaidOutNode, "x" | "y" | "width" | "height"> | null,
+): Camera {
+  if (viewport.width <= 0 || viewport.height <= 0) return READABLE_CAMERA;
+  const fitted = fitCamera(tree, viewport);
+  return selected ? ensureVisible(selected, fitted, viewport) : fitted;
+}
+
 /** The camera that puts a node's box center at the viewport center, keeping zoom. */
 export function centerCameraOn(
   node: Pick<LaidOutNode, "x" | "y" | "width" | "height">,
