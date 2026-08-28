@@ -40,6 +40,7 @@ describe("pidfile", () => {
     expect(readPidfile(path)).toEqual({
       pid: 10,
       serverPid: 11,
+      state: "running",
       port: 5173,
       root,
       startedAt: "2026-08-28T00:00:00.000Z",
@@ -307,7 +308,7 @@ describe("reclaimPort", () => {
     });
     expect(await h.run()).toEqual({ outcome: "foreign", pid: 21 });
     expect(h.signals).toEqual([]);
-    expect(h.removed).toEqual([PIDFILE]);
+    expect(h.removed).toEqual([]);
   });
 
   it("cleans up a pidfile whose processes are already gone", async () => {
@@ -322,6 +323,20 @@ describe("reclaimPort", () => {
     expect(await h.run()).toEqual({ outcome: "live-instance", pid: 21 });
     expect(h.signals).toEqual([]);
     expect(h.removed).toEqual([]);
+  });
+
+  it("preserves a live reservation until its server pid is recorded", async () => {
+    const handle = createPidfileHandle({ root, port: 5173, ownerPid: 20 });
+    expect(handle.claim()).toBe("claimed");
+    const reservation = readPidfile(handle.path);
+    expect(reservation).toMatchObject({ pid: 20, serverPid: null, state: "reserved" });
+
+    const h = harness({ portFree: false, record: reservation, alive: (pid) => pid === 20 });
+    expect(await h.run({ root })).toEqual({ outcome: "live-instance", pid: 20 });
+    expect(h.removed).toEqual([]);
+
+    expect(handle.record(21)).toBe(true);
+    expect(readPidfile(handle.path)).toMatchObject({ pid: 20, serverPid: 21, state: "running" });
   });
 
   it("reclaims a server reparented away from a launcher pid that has been reused", async () => {

@@ -7,6 +7,11 @@
 // aside to 5174 forever. The pidfile is what makes that orphan identifiable: the port
 // alone says nothing about who owns it, and the process table alone cannot tell a stale
 // server from a live one belonging to somebody else.
+//
+// A reservation with a live launcher is preserved. A reservation with a dead
+// launcher is stale. A running Vite server is reclaimed only when it matches this
+// installation and port and is no longer supervised. Other records are never
+// signalled and are removed only when they name no live process.
 
 import { mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -132,10 +137,13 @@ export function readPidfile(path, { read = readFileSync } = {}) {
   if (!parsed || typeof parsed !== "object") return null;
   const serverPid = positivePid(parsed.serverPid);
   const pid = positivePid(parsed.pid);
-  if (serverPid === null && pid === null) return null;
+  const state = parsed.state === "reserved" ? "reserved" : "running";
+  const effectiveServerPid = state === "reserved" ? null : (serverPid ?? pid);
+  if ((state === "reserved" && pid === null) || (pid === null && effectiveServerPid === null)) return null;
   return {
     pid,
-    serverPid: serverPid ?? pid,
+    serverPid: effectiveServerPid,
+    state,
     port: positivePid(parsed.port),
     root: typeof parsed.root === "string" ? parsed.root : null,
     startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : null,
@@ -319,6 +327,11 @@ export async function reclaimPort({
   if (!record || (record.port !== null && record.port !== port)) return { outcome: "foreign", pid: null };
 
   const server = record.serverPid;
+  if (server === null) {
+    if (record.pid !== selfPid && isAlive(record.pid)) return { outcome: "live-instance", pid: record.pid };
+    removeRecord(path);
+    return { outcome: "stale-pidfile", pid: null };
+  }
   const serverCommand = commandOf(server);
   const serverIsOurs =
     server !== selfPid &&
@@ -326,9 +339,10 @@ export async function reclaimPort({
     isOwnViteProcess(serverCommand, { root }) &&
     commandUsesPort(serverCommand, port);
   if (!serverIsOurs) {
-    removeRecord(path);
     const stillAlive = [record.pid, server].some((pid) => pid !== null && pid !== selfPid && isAlive(pid));
-    return { outcome: stillAlive ? "foreign" : "stale-pidfile", pid: server };
+    if (stillAlive) return { outcome: "foreign", pid: server };
+    removeRecord(path);
+    return { outcome: "stale-pidfile", pid: server };
   }
 
   // Parentage, not the launcher's command line, decides whether this server is stale:
@@ -375,9 +389,10 @@ export function createPidfileHandle({
 }) {
   const path = pidfilePath(root, port);
   let written = false;
-  const makeRecord = (serverPid) => ({
+  const makeRecord = (serverPid = null) => ({
     pid: ownerPid,
-    serverPid: serverPid ?? ownerPid,
+    serverPid,
+    state: serverPid === null ? "reserved" : "running",
     port,
     root,
     startedAt: new Date().toISOString(),
@@ -387,7 +402,7 @@ export function createPidfileHandle({
     claim() {
       let outcome;
       try {
-        outcome = claim(path, makeRecord(ownerPid));
+        outcome = claim(path, makeRecord());
       } catch {
         outcome = "unavailable";
       }
