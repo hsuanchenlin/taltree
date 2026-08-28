@@ -4,13 +4,40 @@ import net from "node:net";
 import http from "node:http";
 import { spawn } from "node:child_process";
 
-export function isPortFree(port, host = "127.0.0.1") {
+/** Host the dev server binds to; probes and readiness checks use the same one. */
+export const SERVER_HOST = "127.0.0.1";
+
+/** True when `err` means the address family simply does not exist on this machine. */
+function familyUnavailable(err) {
+  return err.code === "EAFNOSUPPORT" || err.code === "EADDRNOTAVAIL";
+}
+
+function canBind(port, host, { ipv6Only = false } = {}) {
   return new Promise((resolve) => {
     const probe = net.createServer();
-    probe.once("error", () => resolve(false));
+    probe.once("error", (err) => resolve(familyUnavailable(err)));
     probe.once("listening", () => probe.close(() => resolve(true)));
-    probe.listen(port, host);
+    probe.listen({ port, host, ipv6Only });
   });
+}
+
+/**
+ * True when `port` can be taken on every interface the dev server or the
+ * readiness probe could touch. Without an explicit `host`, both loopbacks
+ * and both wildcards are probed: 127.0.0.1 and 0.0.0.0 (which also covers
+ * dual-stack `::` listeners) plus the IPv6-only `::1` and `::`. BSD-style
+ * stacks let a wildcard bind coexist with a specific address on the same
+ * port, so probing only the wildcards would miss loopback-only listeners.
+ */
+export async function isPortFree(port, host) {
+  if (host) return canBind(port, host);
+  const probes = await Promise.all([
+    canBind(port, "127.0.0.1"),
+    canBind(port, "0.0.0.0"),
+    canBind(port, "::1", { ipv6Only: true }),
+    canBind(port, "::", { ipv6Only: true }),
+  ]);
+  return probes.every(Boolean);
 }
 
 /** First free port at or above `preferred`. Throws if none within maxAttempts. */
@@ -37,6 +64,45 @@ export function waitForServer(url, { timeoutMs = 15000, intervalMs = 150 } = {})
     };
     attempt();
   });
+}
+
+/** True when collected server output reports a port bind failure. */
+export function isPortInUseError(output) {
+  return /already in use|EADDRINUSE/i.test(output);
+}
+
+/**
+ * Spawn the Vite dev server bound to `host:port`, mirroring its stderr while
+ * collecting it for bind-failure detection. `waitUntilReady(url)` resolves
+ * once the server answers, exits, or the readiness deadline passes.
+ */
+export function spawnDevServer(viteBin, { cwd, port, host = SERVER_HOST, timeoutMs = 15000 }) {
+  const child = spawn(viteBin, ["--port", String(port), "--strictPort", "--host", host], {
+    cwd,
+    stdio: ["ignore", "inherit", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+    process.stderr.write(chunk);
+  });
+  const exited = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
+  return {
+    child,
+    exited,
+    get stderr() {
+      return stderr;
+    },
+    waitUntilReady(url) {
+      return Promise.race([
+        waitForServer(url, { timeoutMs }).then(
+          () => ({ ready: true }),
+          (err) => ({ ready: false, timedOut: true, error: err }),
+        ),
+        exited.then((code) => ({ ready: false, timedOut: false, code })),
+      ]);
+    },
+  };
 }
 
 /** Open `url` in the default browser, detached and best-effort. */
