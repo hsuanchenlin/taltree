@@ -38,6 +38,7 @@ npm link        # or: npm install -g .
 ```bash
 taltree                 # start the dev server on a free port (default 5173) and open the browser
 taltree --port 3000     # use a specific port (fails if it is busy)
+taltree --no-open       # start without opening a browser (for headless or scripted use)
 taltree update          # git pull the latest version and reinstall dependencies
 taltree update --check  # report whether an update exists, change nothing
 taltree --help          # usage
