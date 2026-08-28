@@ -50,7 +50,7 @@ Press `q` or `Ctrl-C` to stop the server. With `npm install -g .` the installed 
 
 On first visit Taltree loads a demo plan, **A full Thursday**, so you can see a frontier that does not all fit in one day.
 
-The **talent tree** is the main workspace: a dark relic slab of circular rune sockets, drawn with WebGL. Independent chains sit side by side; hard prerequisites sit above what they unlock as carved conduit channels. Each socket's rim, glyph, and plaque label all mark state (Eligible, Blocked, Deferred today, Completed), not colour alone. Machines without WebGL get the same tree as an SVG/DOM board, where node shape carries the state too. The **List** view is the same plan grouped for keyboard browsing.
+The **talent tree** is the main workspace: a dark relic slab of circular rune sockets, drawn with WebGL. Independent chains sit side by side; hard prerequisites sit above what they unlock as carved conduit channels. Each socket's rim, glyph, and plaque label all mark state (Eligible, Blocked, Deferred today, Completed), not colour alone. Machines without WebGL - or a browser where the WebGL context fails or is lost - get the same tree as an SVG/DOM board, where node shape carries the state too. The **List** view is the same plan grouped for keyboard browsing.
 
 1. Set **Daily budget** (points are your unit: hours, energy, or attention). Remaining budget stays visible on the tree and updates with spend.
 2. Select a node on the tree. The strip above the board states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
