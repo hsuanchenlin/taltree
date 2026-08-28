@@ -47,7 +47,7 @@ export default function TalentTreePixi({
 }: TalentTreePixiProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<RelicWorld | null>(null);
-  const [initFailure, setInitFailure] = useState<Error | null>(null);
+  const [rendererFailure, setRendererFailure] = useState<Error | null>(null);
   // Set by the mount effect once the application can paint. The prop effects
   // call it so a scene change lands even when the ticker is being throttled.
   const renderNowRef = useRef<(() => void) | null>(null);
@@ -59,6 +59,7 @@ export default function TalentTreePixi({
     if (!host) return;
     let active = true;
     let ready = false;
+    let failed = false;
     let frames = 0;
     // The effect owns its canvas, not React. A canvas element holds exactly one
     // WebGL context, so under StrictMode's mount-cleanup-mount (or a fast
@@ -98,16 +99,21 @@ export default function TalentTreePixi({
         app.render();
         frames += 1;
       } catch (error) {
-        recordDiagnosticEvent("pixi.render", error);
+        failRenderer("pixi.render", error);
       }
+    }
+    function failRenderer(source: string, reason: unknown) {
+      if (!active || failed) return;
+      failed = true;
+      const failure =
+        reason instanceof Error ? reason : new Error(String(reason));
+      recordDiagnosticEvent(source, failure);
+      setRendererFailure(failure);
     }
     // A lost context presents as a blank slab with no console error. Degrade
     // to the DOM tree through the error boundary instead of staying blank.
     function onContextLost() {
-      recordDiagnosticEvent("webglcontextlost", "WebGL context lost");
-      if (active) {
-        setInitFailure(new Error("WebGL context lost"));
-      }
+      failRenderer("webglcontextlost", new Error("WebGL context lost"));
     }
     canvas.addEventListener("webglcontextlost", onContextLost);
     const timer = window.setTimeout(() => {
@@ -115,8 +121,7 @@ export default function TalentTreePixi({
         const failure = new Error(
           `Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`,
         );
-        recordDiagnosticEvent("pixi.init", failure);
-        setInitFailure(failure);
+        failRenderer("pixi.init", failure);
       }
     }, INIT_TIMEOUT_MS);
     // Pixi's own `resizeTo` only listens for window resizes, so a board that
@@ -195,10 +200,7 @@ export default function TalentTreePixi({
         dispose();
         if (!active) return;
         window.clearTimeout(timer);
-        recordDiagnosticEvent("pixi.init", reason);
-        setInitFailure(
-          reason instanceof Error ? reason : new Error(String(reason)),
-        );
+        failRenderer("pixi.init", reason);
       },
     );
     return () => {
@@ -233,7 +235,7 @@ export default function TalentTreePixi({
     renderNowRef.current?.();
   }, [hoveredId]);
 
-  if (initFailure) throw initFailure;
+  if (rendererFailure) throw rendererFailure;
 
   return <div className="tree-pixi-host" ref={hostRef} />;
 }
