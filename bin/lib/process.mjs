@@ -8,7 +8,7 @@
 // alone says nothing about who owns it, and the process table alone cannot tell a stale
 // server from a live one belonging to somebody else.
 
-import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, sep } from "node:path";
 
@@ -84,13 +84,29 @@ export function claimPidfile(
   }
 }
 
-function updateClaimedPidfile(path, record, { read = readPidfile, write = writePidfile } = {}) {
-  const existing = read(path);
-  if (!existing || existing.pid !== record.pid) return false;
+let pidfileTempSequence = 0;
+
+export function updateClaimedPidfile(
+  path,
+  record,
+  { read = readPidfile, write = writeFileSync, rename = renameSync, remove = unlinkSync } = {},
+) {
+  const tempPath = `${path}.${process.pid}.${++pidfileTempSequence}.tmp`;
   try {
-    write(path, record);
+    write(tempPath, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
+    const existing = read(path);
+    if (!existing || existing.pid !== record.pid) {
+      remove(tempPath);
+      return false;
+    }
+    rename(tempPath, path);
     return true;
   } catch {
+    try {
+      remove(tempPath);
+    } catch {
+      return false;
+    }
     return false;
   }
 }

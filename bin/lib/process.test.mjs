@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import {
   pidfilePath,
   writePidfile,
   claimPidfile,
+  updateClaimedPidfile,
   readPidfile,
   removePidfile,
   isProcessAlive,
@@ -93,6 +94,24 @@ describe("pidfile", () => {
 
     expect(claimPidfile(path, { pid: 20, serverPid: 20, port: 5173 })).toBe("claimed");
     expect(readPidfile(path)).toMatchObject({ pid: 20, serverPid: 20 });
+  });
+
+  it("keeps the claimed record parseable across a server pid update", () => {
+    const path = pidfilePath(root, 5173);
+    const initial = { pid: 10, serverPid: 10, port: 5173, root };
+    const updated = { ...initial, serverPid: 11 };
+    expect(claimPidfile(path, initial)).toBe("claimed");
+
+    expect(
+      updateClaimedPidfile(path, updated, {
+        rename: (source, destination) => {
+          expect(readPidfile(destination)).toMatchObject(initial);
+          renameSync(source, destination);
+          expect(readPidfile(destination)).toMatchObject(updated);
+        },
+      }),
+    ).toBe(true);
+    expect(readPidfile(path)).toMatchObject(updated);
   });
 });
 
