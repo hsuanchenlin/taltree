@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, helpText, CliError } from "./lib/cli.mjs";
 import { SERVER_HOST, isPortFree, findFreePort, isPortInUseError, spawnDevServer, openBrowser } from "./lib/server.mjs";
+import { reclaimPort, createPidfileHandle } from "./lib/process.mjs";
 import { update, UpdateError } from "./lib/update.mjs";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -23,7 +24,16 @@ async function launch({ port, portExplicit, open }) {
   }
 
   let current = null;
+  let pidfile = null;
   let stopping = false;
+  // Synchronous, so it still runs from the `exit` handler that covers every
+  // process.exit path below; a launcher killed outright leaves the record behind
+  // on purpose, which is what lets the next launch reclaim the orphan.
+  const clearPidfile = () => {
+    pidfile?.clear();
+    pidfile = null;
+  };
+  process.on("exit", clearPidfile);
   const stop = (code) => {
     if (stopping) return;
     stopping = true;
@@ -46,6 +56,17 @@ async function launch({ port, portExplicit, open }) {
     });
   }
 
+  // A dev server orphaned by a killed launcher keeps holding the port; take it
+  // back when the pidfile proves the holder is ours, and leave anything else alone.
+  const reclaim = await reclaimPort({ root: packageRoot, port, isPortFree });
+  if (reclaim.outcome === "reclaimed") {
+    console.log(`taltree: reclaimed port ${port} from previous instance (pid ${reclaim.pid})`);
+  } else if (reclaim.outcome === "live-instance" && !portExplicit) {
+    console.log(`taltree: port ${port} is already served by a running taltree (pid ${reclaim.pid}); using the next free port`);
+  } else if (reclaim.outcome === "foreign" && !portExplicit) {
+    console.log(`taltree: port ${port} is in use by another program; using the next free port`);
+  }
+
   // A port probed free can still lose the bind race, so non-explicit ports
   // retry on the next candidate; an explicit port failure is reported instead.
   let preferred = port;
@@ -53,9 +74,19 @@ async function launch({ port, portExplicit, open }) {
     if (portExplicit && !(await isPortFree(port))) fail(`port ${port} is already in use`);
     const chosen = portExplicit ? port : await findFreePort(preferred);
     const url = `http://${SERVER_HOST}:${chosen}`;
+    pidfile = createPidfileHandle({ root: packageRoot, port: chosen });
+    const claimOutcome = pidfile.claim();
+    if (claimOutcome === "taken") {
+      pidfile = null;
+      if (portExplicit) fail(`port ${port} is already in use`);
+      preferred = chosen + 1;
+      continue;
+    }
+    if (claimOutcome === "unavailable") pidfile = null;
 
     console.log(`taltree: starting dev server on ${url}`);
     current = spawnDevServer(viteBin, { cwd: packageRoot, port: chosen });
+    pidfile?.record(current.child.pid);
     const outcome = await current.waitUntilReady(url);
     if (stopping) return;
 
@@ -76,6 +107,7 @@ async function launch({ port, portExplicit, open }) {
       return;
     }
 
+    clearPidfile();
     const bindFailed = isPortInUseError(current.stderr);
     if (portExplicit) {
       fail(
