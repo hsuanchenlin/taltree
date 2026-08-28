@@ -151,6 +151,11 @@ describe("isOwnProcess", () => {
     expect(isOwnProcess(`node ${root}/node_modules/.bin/vite --port 5173`, { root: `${root}/` })).toBe(true);
   });
 
+  it("recognises an installation whose path contains spaces", () => {
+    const root = "/home/dev/My Projects/taltree";
+    expect(isOwnProcess(`node ${root}/node_modules/.bin/vite --port 5173 --strictPort`, { root })).toBe(true);
+  });
+
   it("refuses anything it cannot positively identify", () => {
     const root = installRoot;
     expect(isOwnProcess("node /elsewhere/taltree/node_modules/.bin/vite --port 5173", { root })).toBe(false);
@@ -250,6 +255,13 @@ describe("reclaimPort", () => {
     expect(h.signals).toEqual([]);
   });
 
+  it("never signals this installation's server when it was launched for another port", async () => {
+    const otherPortCommand = "node /home/dev/taltree/node_modules/.bin/vite --port 5174 --strictPort";
+    const h = harness({ portFree: false, record: ownRecord, alive: orphaned, command: () => otherPortCommand });
+    expect(await h.run()).toEqual({ outcome: "foreign", pid: 21 });
+    expect(h.signals).toEqual([]);
+  });
+
   it("never signals its own pid", async () => {
     const h = harness({ portFree: false, record: { pid: 7, serverPid: 7, port: 5173 }, command: () => viteCommand });
     expect(await h.run({ selfPid: 7 })).toEqual({ outcome: "stale-pidfile", pid: 7 });
@@ -322,7 +334,8 @@ describe("reclaimPort against real processes", () => {
         "const net = require('node:net');",
         ignoreSigterm ? "process.on('SIGTERM', () => {});" : "",
         "const server = net.createServer();",
-        "server.listen({ port: Number(process.argv[2]), host: '127.0.0.1' }, () => console.log('listening'));",
+        "const port = Number(process.argv[process.argv.indexOf('--port') + 1]);",
+        "server.listen({ port, host: '127.0.0.1' }, () => console.log('listening'));",
       ].join("\n"),
     );
     return script;
@@ -347,7 +360,7 @@ describe("reclaimPort against real processes", () => {
   async function spawnOrphan({ ignoreSigterm = false } = {}) {
     const script = writeFakeVite({ ignoreSigterm });
     const port = await freePort();
-    const child = spawn(process.execPath, [script, String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+    const child = spawn(process.execPath, [script, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
     children.push(child.pid);
     await firstLine(child);
     return { pid: child.pid, port };
@@ -362,7 +375,7 @@ describe("reclaimPort against real processes", () => {
       launcherScript,
       [
         "const { spawn } = require('node:child_process');",
-        `const child = spawn(process.execPath, [${JSON.stringify(script)}, String(${port})], { stdio: ['ignore', 'pipe', 'inherit'] });`,
+        `const child = spawn(process.execPath, [${JSON.stringify(script)}, '--port', String(${port})], { stdio: ['ignore', 'pipe', 'inherit'] });`,
         "child.stdout.on('data', () => console.log(child.pid));",
         "setInterval(() => {}, 1000);",
       ].join("\n"),

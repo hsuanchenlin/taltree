@@ -145,6 +145,10 @@ function psCommand(pid) {
 /** Program names the launcher may terminate, when they run out of the install root. */
 const OWN_PROGRAMS = new Set(["vite", "vite.js", "vite.mjs", "vite.cmd", "taltree", "taltree.mjs", "taltree.cmd"]);
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * True when a command line belongs to this installation's launcher or dev server.
  * The test is one argument that is *both* under the install root and named like our
@@ -156,10 +160,20 @@ export function isOwnProcess(command, { root } = {}) {
   if (typeof command !== "string" || command.trim() === "") return false;
   const normalizedRoot = normalizeRoot(root);
   if (normalizedRoot === null) return false;
-  return command
-    .trim()
-    .split(/\s+/)
-    .some((token) => token.includes(normalizedRoot) && OWN_PROGRAMS.has(token.split(/[\\/]/).pop().toLowerCase()));
+  const portableCommand = command.replaceAll("\\", "/");
+  const portableRoot = normalizedRoot.replaceAll("\\", "/");
+  const directories = ["node_modules/.bin", "node_modules/vite/bin", "bin"];
+  return directories.some((directory) =>
+    [...OWN_PROGRAMS].some((program) => {
+      const path = `${portableRoot}/${directory}/${program}`;
+      return new RegExp(`${escapeRegExp(path)}(?=[\"'\\s]|$)`, "i").test(portableCommand);
+    }),
+  );
+}
+
+function commandUsesPort(command, port) {
+  if (typeof command !== "string") return false;
+  return new RegExp(`(?:^|\\s)--port(?:=|\\s+)${port}(?=\\s|$)`).test(command);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,7 +231,12 @@ export async function reclaimPort({
   if (!record || (record.port !== null && record.port !== port)) return { outcome: "foreign", pid: null };
 
   const server = record.serverPid;
-  const serverIsOurs = server !== selfPid && isAlive(server) && isOwnProcess(commandOf(server), { root });
+  const serverCommand = commandOf(server);
+  const serverIsOurs =
+    server !== selfPid &&
+    isAlive(server) &&
+    isOwnProcess(serverCommand, { root }) &&
+    commandUsesPort(serverCommand, port);
   if (!serverIsOurs) {
     removeRecord(path);
     const stillAlive = [record.pid, server].some((pid) => pid !== null && pid !== selfPid && isAlive(pid));
