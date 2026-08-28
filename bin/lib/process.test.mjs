@@ -274,6 +274,13 @@ describe("reclaimPort", () => {
     expect(h.signals).toEqual([]);
   });
 
+  it("never signals a reused pid now running this installation's launcher", async () => {
+    const launcherCommand = "node /home/dev/taltree/bin/taltree.mjs --port 5173";
+    const h = harness({ portFree: false, record: ownRecord, alive: orphaned, command: () => launcherCommand });
+    expect(await h.run()).toEqual({ outcome: "foreign", pid: 21 });
+    expect(h.signals).toEqual([]);
+  });
+
   it("never signals its own pid", async () => {
     const h = harness({ portFree: false, record: { pid: 7, serverPid: 7, port: 5173 }, command: () => viteCommand });
     expect(await h.run({ selfPid: 7 })).toEqual({ outcome: "stale-pidfile", pid: 7 });

@@ -142,8 +142,9 @@ function psCommand(pid) {
   return psField(pid, "command");
 }
 
-/** Program names the launcher may terminate, when they run out of the install root. */
-const OWN_PROGRAMS = new Set(["vite", "vite.js", "vite.mjs", "vite.cmd", "taltree", "taltree.mjs", "taltree.cmd"]);
+/** Program names belonging to this installation. */
+const VITE_PROGRAMS = ["vite", "vite.js", "vite.mjs", "vite.cmd"];
+const TALTREE_PROGRAMS = ["taltree", "taltree.mjs", "taltree.cmd"];
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -156,20 +157,37 @@ function escapeRegExp(value) {
  * checkout (`postgres -D <root>/data`), and the name alone would match another
  * taltree. Anything we cannot positively identify is left alone.
  */
-export function isOwnProcess(command, { root, platform = process.platform } = {}) {
+function matchesOwnProgram(command, { root, platform, directories, programs }) {
   if (typeof command !== "string" || command.trim() === "") return false;
   const normalizedRoot = normalizeRoot(root);
   if (normalizedRoot === null) return false;
   const portableCommand = command.replaceAll("\\", "/");
   const portableRoot = normalizedRoot.replaceAll("\\", "/");
-  const directories = ["node_modules/.bin", "node_modules/vite/bin", "bin"];
   const flags = platform === "win32" || platform === "darwin" ? "i" : "";
   return directories.some((directory) =>
-    [...OWN_PROGRAMS].some((program) => {
+    programs.some((program) => {
       const path = `${portableRoot}/${directory}/${program}`;
       return new RegExp(`(?:^|[\"'\\s])${escapeRegExp(path)}(?=[\"'\\s]|$)`, flags).test(portableCommand);
     }),
   );
+}
+
+export function isOwnProcess(command, { root, platform = process.platform } = {}) {
+  return matchesOwnProgram(command, {
+    root,
+    platform,
+    directories: ["node_modules/.bin", "node_modules/vite/bin", "bin"],
+    programs: [...VITE_PROGRAMS, ...TALTREE_PROGRAMS],
+  });
+}
+
+function isOwnViteProcess(command, { root, platform = process.platform } = {}) {
+  return matchesOwnProgram(command, {
+    root,
+    platform,
+    directories: ["node_modules/.bin", "node_modules/vite/bin"],
+    programs: VITE_PROGRAMS,
+  });
 }
 
 function commandUsesPort(command, port) {
@@ -236,7 +254,7 @@ export async function reclaimPort({
   const serverIsOurs =
     server !== selfPid &&
     isAlive(server) &&
-    isOwnProcess(serverCommand, { root }) &&
+    isOwnViteProcess(serverCommand, { root }) &&
     commandUsesPort(serverCommand, port);
   if (!serverIsOurs) {
     removeRecord(path);
