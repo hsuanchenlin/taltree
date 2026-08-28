@@ -77,12 +77,12 @@ async function launch({ port, portExplicit, open }) {
 
     console.log(`taltree: starting dev server on ${url}`);
     current = spawnDevServer(viteBin, { cwd: packageRoot, port: chosen });
+    pidfile = createPidfileHandle({ root: packageRoot, port: chosen });
+    pidfile.record(current.child.pid);
     const outcome = await current.waitUntilReady(url);
     if (stopping) return;
 
     if (outcome.ready) {
-      pidfile = createPidfileHandle({ root: packageRoot, port: chosen });
-      pidfile.record(current.child.pid);
       console.log(`taltree: server ready at ${url} - press q or Ctrl-C to stop`);
       if (open) {
         console.log("taltree: opening in your browser");

@@ -42,6 +42,16 @@ export function writePidfile(path, record, { write = writeFileSync, mkdir = mkdi
   write(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
+export function claimPidfile(path, record, { write = writeFileSync, mkdir = mkdirSync } = {}) {
+  try {
+    mkdir(dirname(path), { recursive: true });
+    write(path, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Read a pidfile record, or null when it is missing, unreadable, malformed, or
  * lacks a usable server pid. A damaged pidfile must never be fatal: the worst it
@@ -296,21 +306,23 @@ export async function reclaimPort({
  * this user cannot write, and a launcher that refused to start over an unwritable
  * pidfile would be worse than one that simply cannot auto-heal later.
  */
-export function createPidfileHandle({ root, port, ownerPid = process.pid, write = writePidfile, remove = removePidfile }) {
+export function createPidfileHandle({ root, port, ownerPid = process.pid, claim = claimPidfile, remove = removePidfile }) {
   const path = pidfilePath(root, port);
   let written = false;
   return {
     path,
     record(serverPid) {
       try {
-        write(path, {
-          pid: ownerPid,
-          serverPid: serverPid ?? ownerPid,
-          port,
-          root,
-          startedAt: new Date().toISOString(),
-        });
-        written = true;
+        written = claim(
+          path,
+          {
+            pid: ownerPid,
+            serverPid: serverPid ?? ownerPid,
+            port,
+            root,
+            startedAt: new Date().toISOString(),
+          },
+        );
       } catch {
         written = false;
       }

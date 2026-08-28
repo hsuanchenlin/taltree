@@ -7,6 +7,7 @@ import net from "node:net";
 import {
   pidfilePath,
   writePidfile,
+  claimPidfile,
   readPidfile,
   removePidfile,
   isProcessAlive,
@@ -67,6 +68,13 @@ describe("pidfile", () => {
     expect(existsSync(path)).toBe(false);
     expect(removePidfile(path, { ownerPid: 10 })).toBe(false);
   });
+
+  it("claims a pidfile exclusively", () => {
+    const path = pidfilePath(root, 5173);
+    expect(claimPidfile(path, { pid: 10, serverPid: 11, port: 5173 })).toBe(true);
+    expect(claimPidfile(path, { pid: 20, serverPid: 21, port: 5173 })).toBe(false);
+    expect(readPidfile(path)).toMatchObject({ pid: 10, serverPid: 11 });
+  });
 });
 
 describe("createPidfileHandle", () => {
@@ -87,7 +95,7 @@ describe("createPidfileHandle", () => {
       root,
       port: 5173,
       ownerPid: 4242,
-      write: () => {
+      claim: () => {
         throw Object.assign(new Error("read-only file system"), { code: "EROFS" });
       },
     });
@@ -114,6 +122,7 @@ describe("createPidfileHandle", () => {
     const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777 });
     winner.record(4243);
 
+    expect(contender.record(7778)).toBe(false);
     contender.clear();
 
     expect(readPidfile(winner.path)).toMatchObject({ pid: 4242, serverPid: 4243 });
