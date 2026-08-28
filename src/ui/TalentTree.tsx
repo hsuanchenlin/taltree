@@ -11,6 +11,8 @@ import {
 import type { ReactNode } from "react";
 import { canUseWebGL } from "../canvas/webgl";
 import { hitTestNode } from "../canvas/relicGeometry";
+import { recordDiagnosticEvent } from "../diagnostics";
+import type { ActiveRenderer } from "../diagnostics";
 import type { ChoiceExplanation } from "../domain/types";
 import type {
   Camera,
@@ -23,6 +25,7 @@ import type {
 import {
   CAMERA_MOTION,
   centerCameraOn,
+  clampCameraToContent,
   dragVelocity,
   easeOutCubic,
   ensureVisible,
@@ -48,6 +51,14 @@ interface TalentTreeProps {
   onSelect: (id: string) => void;
   /** Increments when the `f` key asks the camera to center the selected node. */
   focusSignal?: number;
+  /**
+   * Which tree renderer was asked for. `relic` still degrades to the DOM world
+   * when WebGL is missing or Pixi fails; `classic` never mounts Pixi at all,
+   * which is the way out when the slab paints black on a given device.
+   */
+  renderer?: "relic" | "classic";
+  /** Reports which renderer is actually on screen, for the diagnostics panel. */
+  onActiveRendererChange?: (active: ActiveRenderer) => void;
 }
 
 const ZOOM_STEP = 1.15;
@@ -103,6 +114,7 @@ class PixiErrorBoundary extends Component<
 
   componentDidCatch(error: unknown): void {
     console.error("Relic slab renderer failed; falling back to the DOM tree.", error);
+    recordDiagnosticEvent("renderer", error);
     this.props.onFailed();
   }
 
@@ -117,8 +129,13 @@ export function TalentTree({
   explanation,
   onSelect,
   focusSignal = 0,
+  renderer = "relic",
+  onActiveRendererChange,
 }: TalentTreeProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  // Last measured board size. The camera clamps against this instead of
+  // re-measuring the DOM on every pointer move.
+  const viewportSizeRef = useRef<ViewportSize>({ width: 0, height: 0 });
   const treeRef = useRef(tree);
   treeRef.current = tree;
   const panRef = useRef<PanGesture | null>(null);
@@ -157,13 +174,23 @@ export function TalentTree({
   // the relic surface owns - the dark board, its hit test, its screen-reader
   // list - must follow the latter, or the DOM fallback inherits a dark
   // background it was never styled for and a second, invisible click target.
-  const usePixi = hasNodes && canUseWebGL();
+  const usePixi = hasNodes && renderer === "relic" && canUseWebGL();
   const pixiLive = usePixi && !pixiFailed;
   const onPixiFailed = useCallback(() => setPixiFailed(true), []);
 
+  /**
+   * The single funnel every camera write passes through. Clamping here - not
+   * at each caller - is what guarantees the board can never show an empty slab
+   * with the whole tree parked outside it, whichever motion moved the camera.
+   */
   const applyCamera = useCallback((next: Camera) => {
-    cameraRef.current = next;
-    setCamera(next);
+    const clamped = clampCameraToContent(
+      treeRef.current,
+      next,
+      viewportSizeRef.current,
+    );
+    cameraRef.current = clamped;
+    setCamera(clamped);
   }, []);
 
   /** Halt every camera motion, catching the camera exactly where it is. */
@@ -240,13 +267,55 @@ export function TalentTree({
     return () => setPixiFailed(false);
   }, [usePixi]);
 
+  useEffect(() => {
+    onActiveRendererChange?.(pixiLive ? "relic" : "classic");
+  }, [pixiLive, onActiveRendererChange]);
+
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     stopMotion();
+    const size = sizeOf(viewport);
+    viewportSizeRef.current = size;
     const selected = treeRef.current.nodes.find((node) => node.selected);
-    applyCamera(initialCamera(treeRef.current, sizeOf(viewport), selected));
+    applyCamera(initialCamera(treeRef.current, size, selected));
   }, [layoutKey, applyCamera, stopMotion]);
+
+  /**
+   * The board resizes for reasons no window resize reports: the detail panel
+   * opening, a reflow, a mount measured before layout settled. Without this the
+   * camera keeps offsets fitted to a board that no longer exists, and the tree
+   * walks off the slab - a black board with the scene just outside it.
+   */
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const current = viewportRef.current;
+      if (!current) return;
+      const size = sizeOf(current);
+      if (size.width <= 0 || size.height <= 0) return;
+      const previous = viewportSizeRef.current;
+      viewportSizeRef.current = size;
+      if (previous.width <= 0 || previous.height <= 0) {
+        // The board had never been measured, so the camera it opened with was
+        // fitted against nothing. Fit it now, against a real board.
+        stopMotion();
+        const selected = treeRef.current.nodes.find((node) => node.selected);
+        applyCamera(initialCamera(treeRef.current, size, selected));
+        return;
+      }
+      // Keep whatever the person was looking at in the middle of the new board,
+      // then let the clamp in `applyCamera` pull the tree back into view.
+      applyCamera({
+        ...cameraRef.current,
+        x: cameraRef.current.x + (size.width - previous.width) / 2,
+        y: cameraRef.current.y + (size.height - previous.height) / 2,
+      });
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [hasNodes, applyCamera, stopMotion]);
 
   useEffect(() => {
     const viewport = viewportRef.current;

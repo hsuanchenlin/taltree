@@ -1,6 +1,8 @@
 import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RelicWorld } from "../canvas/world";
+import { recordDiagnosticEvent, setRendererProbe } from "../diagnostics";
+import type { PixiFacts } from "../diagnostics";
 import type { Camera, LaidOutGraph } from "../graph";
 
 /**
@@ -29,6 +31,15 @@ function resolveResolution(): number {
   return constrained ? 1 : Math.min(window.devicePixelRatio || 1, 2);
 }
 
+function rendererName(app: PixiApplication): string {
+  const renderer = app.renderer as unknown as {
+    name?: string;
+    type?: number;
+  } | null;
+  if (!renderer) return "none";
+  return renderer.name ?? `type ${String(renderer.type)}`;
+}
+
 export default function TalentTreePixi({
   tree,
   camera,
@@ -37,6 +48,9 @@ export default function TalentTreePixi({
   const hostRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<RelicWorld | null>(null);
   const [initFailure, setInitFailure] = useState<Error | null>(null);
+  // Set by the mount effect once the application can paint. The prop effects
+  // call it so a scene change lands even when the ticker is being throttled.
+  const renderNowRef = useRef<(() => void) | null>(null);
   const latestRef = useRef({ tree, camera, hoveredId });
   latestRef.current = { tree, camera, hoveredId };
 
@@ -44,6 +58,8 @@ export default function TalentTreePixi({
     const host = hostRef.current;
     if (!host) return;
     let active = true;
+    let ready = false;
+    let frames = 0;
     // The effect owns its canvas, not React. A canvas element holds exactly one
     // WebGL context, so under StrictMode's mount-cleanup-mount (or a fast
     // refresh) the first application's deferred destroy would otherwise kill
@@ -69,9 +85,26 @@ export default function TalentTreePixi({
         }
       }
     }
+    /**
+     * Present one frame now. Pixi paints from its ticker, and a ticker is only
+     * as reliable as `requestAnimationFrame`: a background tab, a throttled
+     * timer, or a mount that finishes between frames all leave the canvas
+     * showing nothing but its clear colour. Every event that changes what the
+     * board should show ends with a direct render so a frame exists regardless.
+     */
+    function renderNow() {
+      if (!ready || !active) return;
+      try {
+        app.render();
+        frames += 1;
+      } catch (error) {
+        recordDiagnosticEvent("pixi.render", error);
+      }
+    }
     // A lost context presents as a blank slab with no console error. Degrade
     // to the DOM tree through the error boundary instead of staying blank.
     function onContextLost() {
+      recordDiagnosticEvent("webglcontextlost", "WebGL context lost");
       if (active) {
         setInitFailure(new Error("WebGL context lost"));
       }
@@ -79,11 +112,32 @@ export default function TalentTreePixi({
     canvas.addEventListener("webglcontextlost", onContextLost);
     const timer = window.setTimeout(() => {
       if (active) {
-        setInitFailure(
-          new Error(`Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`),
+        const failure = new Error(
+          `Pixi did not initialise within ${INIT_TIMEOUT_MS}ms`,
         );
+        recordDiagnosticEvent("pixi.init", failure);
+        setInitFailure(failure);
       }
     }, INIT_TIMEOUT_MS);
+    // Pixi's own `resizeTo` only listens for window resizes, so a board that
+    // changes size for any other reason (the detail panel opening, a layout
+    // reflow, a font landing) keeps a stale drawing buffer and paints the wrong
+    // slice of the scene - or nothing at all when it was measured at zero.
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            if (!ready || !active) return;
+            try {
+              app.resize();
+            } catch (error) {
+              recordDiagnosticEvent("pixi.resize", error);
+            }
+            renderNow();
+          });
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") renderNow();
+    }
     const init = app.init({
       canvas,
       resizeTo: host,
@@ -97,6 +151,7 @@ export default function TalentTreePixi({
       // the slab paints at `resolution`x, clipped to the host's top-left corner.
       autoDensity: true,
     });
+    let releaseProbe: (() => void) | null = null;
     void init.then(
       () => {
         if (!active) {
@@ -109,11 +164,38 @@ export default function TalentTreePixi({
         world.update(latestRef.current.tree);
         world.setCamera(latestRef.current.camera);
         world.setHoveredId(latestRef.current.hoveredId);
+        ready = true;
+        // The host may have been measured at zero (or have changed size) while
+        // the pixi chunk was still loading; re-read it before the first frame.
+        try {
+          app.resize();
+        } catch (error) {
+          recordDiagnosticEvent("pixi.resize", error);
+        }
+        renderNow();
+        renderNowRef.current = renderNow;
+        app.ticker.add(() => {
+          frames += 1;
+        });
+        observer?.observe(host);
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        releaseProbe = setRendererProbe(
+          (): PixiFacts => ({
+            isInitialised: ready,
+            stageChildren: app.stage?.children.length ?? 0,
+            worldBounds: boundsOf(app),
+            camera: latestRef.current.camera,
+            rendererType: rendererName(app),
+            resolution: app.renderer?.resolution ?? 1,
+            framesRendered: frames,
+          }),
+        );
       },
       (reason: unknown) => {
         dispose();
         if (!active) return;
         window.clearTimeout(timer);
+        recordDiagnosticEvent("pixi.init", reason);
         setInitFailure(
           reason instanceof Error ? reason : new Error(String(reason)),
         );
@@ -121,6 +203,11 @@ export default function TalentTreePixi({
     );
     return () => {
       active = false;
+      ready = false;
+      renderNowRef.current = null;
+      releaseProbe?.();
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.clearTimeout(timer);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       worldRef.current?.destroy();
@@ -133,17 +220,35 @@ export default function TalentTreePixi({
 
   useEffect(() => {
     worldRef.current?.update(tree);
+    renderNowRef.current?.();
   }, [tree]);
 
   useEffect(() => {
     worldRef.current?.setCamera(camera);
+    renderNowRef.current?.();
   }, [camera]);
 
   useEffect(() => {
     worldRef.current?.setHoveredId(hoveredId);
+    renderNowRef.current?.();
   }, [hoveredId]);
 
   if (initFailure) throw initFailure;
 
   return <div className="tree-pixi-host" ref={hostRef} />;
+}
+
+function boundsOf(app: PixiApplication): PixiFacts["worldBounds"] {
+  try {
+    const bounds = app.stage?.getBounds();
+    if (!bounds) return null;
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    };
+  } catch {
+    return null;
+  }
 }
