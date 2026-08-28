@@ -45,6 +45,7 @@ taltree --help          # usage
 ```
 
 Press `q` or `Ctrl-C` to stop the server. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
+The development server binds only to `127.0.0.1`; automatic port selection retries the next free port if another process wins the bind race.
 
 ## Usage
 
