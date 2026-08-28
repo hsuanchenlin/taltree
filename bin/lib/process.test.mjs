@@ -156,6 +156,18 @@ describe("isOwnProcess", () => {
     expect(isOwnProcess(`node ${root}/node_modules/.bin/vite --port 5173 --strictPort`, { root })).toBe(true);
   });
 
+  it("refuses a different installation whose path ends with this root", () => {
+    const root = installRoot;
+    expect(isOwnProcess(`node /backup${root}/node_modules/.bin/vite --port 5173`, { root })).toBe(false);
+  });
+
+  it("uses platform path case semantics", () => {
+    const command = "node /HOME/DEV/TALTREE/node_modules/.bin/VITE --port 5173";
+    expect(isOwnProcess(command, { root: installRoot, platform: "linux" })).toBe(false);
+    expect(isOwnProcess(command, { root: installRoot, platform: "darwin" })).toBe(true);
+    expect(isOwnProcess(command, { root: installRoot, platform: "win32" })).toBe(true);
+  });
+
   it("refuses anything it cannot positively identify", () => {
     const root = installRoot;
     expect(isOwnProcess("node /elsewhere/taltree/node_modules/.bin/vite --port 5173", { root })).toBe(false);

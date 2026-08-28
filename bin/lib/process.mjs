@@ -156,17 +156,18 @@ function escapeRegExp(value) {
  * checkout (`postgres -D <root>/data`), and the name alone would match another
  * taltree. Anything we cannot positively identify is left alone.
  */
-export function isOwnProcess(command, { root } = {}) {
+export function isOwnProcess(command, { root, platform = process.platform } = {}) {
   if (typeof command !== "string" || command.trim() === "") return false;
   const normalizedRoot = normalizeRoot(root);
   if (normalizedRoot === null) return false;
   const portableCommand = command.replaceAll("\\", "/");
   const portableRoot = normalizedRoot.replaceAll("\\", "/");
   const directories = ["node_modules/.bin", "node_modules/vite/bin", "bin"];
+  const flags = platform === "win32" || platform === "darwin" ? "i" : "";
   return directories.some((directory) =>
     [...OWN_PROGRAMS].some((program) => {
       const path = `${portableRoot}/${directory}/${program}`;
-      return new RegExp(`${escapeRegExp(path)}(?=[\"'\\s]|$)`, "i").test(portableCommand);
+      return new RegExp(`(?:^|[\"'\\s])${escapeRegExp(path)}(?=[\"'\\s]|$)`, flags).test(portableCommand);
     }),
   );
 }
