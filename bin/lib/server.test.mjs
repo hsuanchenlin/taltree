@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import net from "node:net";
 import http from "node:http";
-import { isPortFree, findFreePort, waitForServer } from "./server.mjs";
+import { isPortFree, findFreePort, waitForServer, spawnDevServer } from "./server.mjs";
 
 const open = [];
 afterEach(async () => {
@@ -107,5 +107,22 @@ describe("waitForServer", () => {
 
   it("rejects after the timeout when nothing listens", async () => {
     await expect(waitForServer("http://127.0.0.1:1", { timeoutMs: 200, intervalMs: 50 })).rejects.toThrow(/timed out/);
+  });
+});
+
+describe("spawnDevServer", () => {
+  it("does not accept an unrelated HTTP server before the child announces ownership", async () => {
+    const server = http.createServer((req, res) => res.end("stale"));
+    open.push(server);
+    const port = await listen(server);
+    const devServer = spawnDevServer(process.execPath, {
+      cwd: process.cwd(),
+      port,
+      timeoutMs: 1000,
+    });
+
+    await expect(devServer.waitUntilReady(`http://127.0.0.1:${port}`)).resolves.toMatchObject({
+      ready: false,
+    });
   });
 });

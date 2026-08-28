@@ -31,13 +31,15 @@ function canBind(port, host, { ipv6Only = false } = {}) {
  */
 export async function isPortFree(port, host) {
   if (host) return canBind(port, host);
-  const probes = await Promise.all([
-    canBind(port, "127.0.0.1"),
-    canBind(port, "0.0.0.0"),
-    canBind(port, "::1", { ipv6Only: true }),
-    canBind(port, "::", { ipv6Only: true }),
-  ]);
-  return probes.every(Boolean);
+  for (const [probeHost, options] of [
+    ["127.0.0.1"],
+    ["0.0.0.0"],
+    ["::1", { ipv6Only: true }],
+    ["::", { ipv6Only: true }],
+  ]) {
+    if (!(await canBind(port, probeHost, options))) return false;
+  }
+  return true;
 }
 
 /** First free port at or above `preferred`. Throws if none within maxAttempts. */
@@ -79,9 +81,21 @@ export function isPortInUseError(output) {
 export function spawnDevServer(viteBin, { cwd, port, host = SERVER_HOST, timeoutMs = 15000 }) {
   const child = spawn(viteBin, ["--port", String(port), "--strictPort", "--host", host], {
     cwd,
-    stdio: ["ignore", "inherit", "pipe"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";
+  let stdout = "";
+  let announceReady;
+  const announced = new Promise((resolve) => {
+    announceReady = resolve;
+  });
+  const expectedUrl = `http://${host}:${port}/`;
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+    process.stdout.write(chunk);
+    const plainOutput = stdout.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+    if (plainOutput.includes("Local:") && plainOutput.includes(expectedUrl)) announceReady();
+  });
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
     process.stderr.write(chunk);
@@ -94,13 +108,22 @@ export function spawnDevServer(viteBin, { cwd, port, host = SERVER_HOST, timeout
       return stderr;
     },
     waitUntilReady(url) {
-      return Promise.race([
-        waitForServer(url, { timeoutMs }).then(
+      let timeout;
+      const timedOut = new Promise((resolve) => {
+        timeout = setTimeout(
+          () => resolve({ ready: false, timedOut: true, error: new Error(`timed out waiting for ${url}`) }),
+          timeoutMs,
+        );
+      });
+      const result = Promise.race([
+        announced.then(() => waitForServer(url, { timeoutMs })).then(
           () => ({ ready: true }),
           (err) => ({ ready: false, timedOut: true, error: err }),
         ),
         exited.then((code) => ({ ready: false, timedOut: false, code })),
+        timedOut,
       ]);
+      return result.finally(() => clearTimeout(timeout));
     },
   };
 }
