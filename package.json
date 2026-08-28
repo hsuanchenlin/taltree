@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Local-first daily-budget dependency planner that explains what each choice unlocks.",
+  "bin": {
+    "taltree": "bin/taltree.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
