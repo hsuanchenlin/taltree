@@ -25,6 +25,27 @@ npm run preview   # serve the production build locally
 
 The app runs entirely in the browser. It does not start a backend and does not send plan data anywhere.
 
+## Global CLI
+
+Install once from this checkout to get the `taltree` command everywhere:
+
+```bash
+npm link        # or: npm install -g .
+```
+
+`npm link` is recommended: it keeps the command bound to this git checkout, which `taltree update` needs.
+
+```bash
+taltree                 # start the dev server on a free port (default 5173) and open the browser
+taltree --port 3000     # use a specific port (fails if it is busy)
+taltree --no-open       # start without opening a browser (for headless or scripted use)
+taltree update          # git pull the latest version and reinstall dependencies
+taltree update --check  # report whether an update exists, change nothing
+taltree --help          # usage
+```
+
+Press `q` or `Ctrl-C` to stop the server. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
+
 ## Usage
 
 On first visit Taltree loads a demo plan, **A full Thursday**, so you can see a frontier that does not all fit in one day.
