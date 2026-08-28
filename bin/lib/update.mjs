@@ -66,25 +66,29 @@ export async function update({ root, check = false, out = (m) => console.log(m) 
   const incoming = await git(root, ["rev-parse", "--short", upstream]);
   out(describeStatus({ ahead, behind, current, incoming }));
 
-  if (behind === 0 || check) return { updated: false, ahead, behind };
+  if (check) return { updated: false, ahead, behind };
 
-  try {
-    await git(root, ["pull", "--ff-only"]);
-  } catch {
-    throw new UpdateError(
-      "git pull --ff-only failed (diverged branch or conflicting local changes); repository left unchanged. Resolve it and retry.",
-    );
+  let after = before;
+  if (behind > 0) {
+    try {
+      await git(root, ["pull", "--ff-only"]);
+    } catch {
+      throw new UpdateError(
+        "git pull --ff-only failed (diverged branch or conflicting local changes); repository left unchanged. Resolve it and retry.",
+      );
+    }
+    after = await git(root, ["log", "-1", "--oneline"]);
+    out(`Pulled: ${after}`);
   }
-  const after = await git(root, ["log", "-1", "--oneline"]);
-  out(`Pulled: ${after}`);
 
   out("Installing dependencies (npm install)...");
   try {
     await runVisible("npm", ["install"], root);
   } catch {
-    throw new UpdateError(`git pull succeeded but npm install failed; run \`npm install\` manually in ${root}.`);
+    throw new UpdateError("npm install failed; retry taltree update.");
   }
 
-  out(`Updated: ${before} -> ${after}`);
-  return { updated: true, ahead, behind };
+  if (behind > 0) out(`Updated: ${before} -> ${after}`);
+  else out(`Dependencies installed; repository remains at ${current}.`);
+  return { updated: behind > 0, ahead, behind };
 }
