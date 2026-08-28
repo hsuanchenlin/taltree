@@ -79,25 +79,32 @@ export function isPortInUseError(output) {
  * once the server answers, exits, or the readiness deadline passes.
  */
 export function spawnDevServer(viteBin, { cwd, port, host = SERVER_HOST, timeoutMs = 15000 }) {
+  const outputTailSize = 4096;
   const child = spawn(viteBin, ["--port", String(port), "--strictPort", "--host", host], {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";
   let stdout = "";
+  let readyAnnounced = false;
   let announceReady;
   const announced = new Promise((resolve) => {
     announceReady = resolve;
   });
   const expectedUrl = `http://${host}:${port}/`;
   child.stdout.on("data", (chunk) => {
-    stdout += chunk;
     process.stdout.write(chunk);
+    if (readyAnnounced) return;
+    stdout = (stdout + chunk).slice(-outputTailSize);
     const plainOutput = stdout.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-    if (plainOutput.includes("Local:") && plainOutput.includes(expectedUrl)) announceReady();
+    if (plainOutput.includes("Local:") && plainOutput.includes(expectedUrl)) {
+      readyAnnounced = true;
+      stdout = "";
+      announceReady();
+    }
   });
   child.stderr.on("data", (chunk) => {
-    stderr += chunk;
+    stderr = (stderr + chunk).slice(-outputTailSize);
     process.stderr.write(chunk);
   });
   const exited = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
