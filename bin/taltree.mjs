@@ -75,16 +75,18 @@ async function launch({ port, portExplicit, open }) {
     const chosen = portExplicit ? port : await findFreePort(preferred);
     const url = `http://${SERVER_HOST}:${chosen}`;
     pidfile = createPidfileHandle({ root: packageRoot, port: chosen });
-    if (!pidfile.claim()) {
+    const claimOutcome = pidfile.claim();
+    if (claimOutcome === "taken") {
       pidfile = null;
       if (portExplicit) fail(`port ${port} is already in use`);
       preferred = chosen + 1;
       continue;
     }
+    if (claimOutcome === "unavailable") pidfile = null;
 
     console.log(`taltree: starting dev server on ${url}`);
     current = spawnDevServer(viteBin, { cwd: packageRoot, port: chosen });
-    pidfile.record(current.child.pid);
+    pidfile?.record(current.child.pid);
     const outcome = await current.waitUntilReady(url);
     if (stopping) return;
 

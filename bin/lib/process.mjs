@@ -58,9 +58,9 @@ export function claimPidfile(
   try {
     mkdir(dirname(path), { recursive: true });
     create();
-    return true;
+    return "claimed";
   } catch (error) {
-    if (error?.code !== "EEXIST") return false;
+    if (error?.code !== "EEXIST") return "unavailable";
   }
 
   const existing = read(path);
@@ -72,15 +72,15 @@ export function claimPidfile(
       existing.pid !== null &&
       isAlive(existing.pid) &&
       (existing.pid !== existing.serverPid || !isOwnViteProcess(serverCommand, { root: existing.root ?? record.root }));
-    if (launcherAlive || serverHoldsPort) return false;
+    if (launcherAlive || serverHoldsPort) return "taken";
   }
-  if (!remove(path, { ownerPid: existing?.pid ?? null })) return false;
+  if (!remove(path, { ownerPid: existing?.pid ?? null })) return "unavailable";
 
   try {
     create();
-    return true;
-  } catch {
-    return false;
+    return "claimed";
+  } catch (error) {
+    return error?.code === "EEXIST" ? "taken" : "unavailable";
   }
 }
 
@@ -369,15 +369,17 @@ export function createPidfileHandle({
   return {
     path,
     claim() {
+      let outcome;
       try {
-        written = claim(path, makeRecord(ownerPid));
+        outcome = claim(path, makeRecord(ownerPid));
       } catch {
-        written = false;
+        outcome = "unavailable";
       }
-      return written;
+      written = outcome === "claimed";
+      return outcome;
     },
     record(serverPid) {
-      if (!written && !this.claim()) return false;
+      if (!written && this.claim() !== "claimed") return false;
       return update(path, makeRecord(serverPid));
     },
     clear() {

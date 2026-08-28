@@ -71,16 +71,27 @@ describe("pidfile", () => {
 
   it("claims a pidfile exclusively", () => {
     const path = pidfilePath(root, 5173);
-    expect(claimPidfile(path, { pid: 10, serverPid: 11, port: 5173 })).toBe(true);
-    expect(claimPidfile(path, { pid: 20, serverPid: 21, port: 5173 })).toBe(false);
+    expect(claimPidfile(path, { pid: 10, serverPid: 11, port: 5173 })).toBe("claimed");
+    expect(
+      claimPidfile(path, { pid: 20, serverPid: 21, port: 5173 }, { isAlive: () => true, commandOf: () => "node" }),
+    ).toBe("taken");
     expect(readPidfile(path)).toMatchObject({ pid: 10, serverPid: 11 });
+  });
+
+  it("reports an unwritable pidfile directory as unavailable", () => {
+    const path = pidfilePath(root, 5173);
+    const mkdir = () => {
+      throw Object.assign(new Error("read-only file system"), { code: "EROFS" });
+    };
+
+    expect(claimPidfile(path, { pid: 10, serverPid: 10, port: 5173 }, { mkdir })).toBe("unavailable");
   });
 
   it("takes over a stale pidfile for a free port", () => {
     const path = pidfilePath(root, 5173);
     writePidfile(path, { pid: DEAD_PID, serverPid: DEAD_PID, port: 5173 });
 
-    expect(claimPidfile(path, { pid: 20, serverPid: 20, port: 5173 })).toBe(true);
+    expect(claimPidfile(path, { pid: 20, serverPid: 20, port: 5173 })).toBe("claimed");
     expect(readPidfile(path)).toMatchObject({ pid: 20, serverPid: 20 });
   });
 });
@@ -112,6 +123,14 @@ describe("createPidfileHandle", () => {
     expect(existsSync(handle.path)).toBe(false);
   });
 
+  it("reports unavailable storage separately from a live owner", () => {
+    const unavailable = createPidfileHandle({ root, port: 5173, claim: () => "unavailable" });
+    const taken = createPidfileHandle({ root, port: 5174, claim: () => "taken" });
+
+    expect(unavailable.claim()).toBe("unavailable");
+    expect(taken.claim()).toBe("taken");
+  });
+
   it("clears at most once and never touches a record it did not write", () => {
     const handle = createPidfileHandle({ root, port: 5173, ownerPid: 4242 });
     handle.clear();
@@ -129,12 +148,12 @@ describe("createPidfileHandle", () => {
     const winner = createPidfileHandle({ root, port: 5173, ownerPid: 4242 });
     const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777 });
     const nextPort = createPidfileHandle({ root, port: 5174, ownerPid: 7777 });
-    expect(winner.claim()).toBe(true);
+    expect(winner.claim()).toBe("claimed");
     winner.record(4243);
 
-    expect(contender.claim()).toBe(false);
+    expect(contender.claim()).toBe("taken");
     contender.clear();
-    expect(nextPort.claim()).toBe(true);
+    expect(nextPort.claim()).toBe("claimed");
 
     expect(readPidfile(winner.path)).toMatchObject({ pid: 4242, serverPid: 4243 });
     expect(readPidfile(nextPort.path)).toMatchObject({ pid: 7777, port: 5174 });
