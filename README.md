@@ -47,7 +47,7 @@ taltree --help          # usage
 Press `q` or `Ctrl-C` to stop the server. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
 The development server binds only to `127.0.0.1`; automatic port selection retries the next free port if another process wins the bind race.
 
-If a previous run was killed outright (a closed terminal, a crashed shell) its dev server survives and keeps holding the port. `taltree` heals that on the next launch: it reads the pidfile it wrote under `.taltree/`, and when the process still holding the port is that orphaned server it stops it and takes the port back, reporting `taltree: reclaimed port 5173 from previous instance (pid 1234)`. Nothing else is ever signalled - a running `taltree` you started elsewhere, or any unrelated program on the port, is left alone and the launcher moves to the next free port instead.
+If a previous run was killed outright (a closed terminal, a crashed shell) its dev server survives and keeps holding the port. `taltree` heals that on the next launch: it reads the pidfile it wrote under `.taltree/`, and when the process still holding the port is that orphaned server it stops it and takes the port back, reporting `taltree: reclaimed port 5173 from previous instance (pid 1234)`. Nothing else is ever signalled - a running `taltree` you started elsewhere, or any unrelated program on the port, is left alone. With automatic port selection the launcher moves to the next free port instead; an occupied explicit `--port` still fails.
 
 ## Usage
 

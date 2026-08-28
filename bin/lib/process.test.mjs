@@ -165,8 +165,10 @@ describe("createPidfileHandle", () => {
   });
 
   it("keeps the bind winner's record when a contender clears without claiming", () => {
+    const claimWithLiveOwner = (path, record) =>
+      claimPidfile(path, record, { isAlive: () => true, commandOf: () => "node" });
     const winner = createPidfileHandle({ root, port: 5173, ownerPid: 4242 });
-    const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777 });
+    const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777, claim: claimWithLiveOwner });
     const nextPort = createPidfileHandle({ root, port: 5174, ownerPid: 7777 });
     expect(winner.claim()).toBe("claimed");
     winner.record(4243);
