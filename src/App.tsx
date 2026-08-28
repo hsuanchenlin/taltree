@@ -1,21 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  collectDiagnostics,
+  installDiagnosticErrorCapture,
+  writeDiagnostics,
+} from "./diagnostics";
+import type { ActiveRenderer, RendererChoice } from "./diagnostics";
 import { buildTalentTree, graphSelectionFor, nearestNode } from "./graph";
 import { BudgetBar } from "./ui/BudgetBar";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { DiagnosticsDialog } from "./ui/DiagnosticsDialog";
 import { formatDay } from "./ui/format";
 import { TreeMark } from "./ui/glyphs";
 import { HelpDialog } from "./ui/HelpDialog";
 import { NodeDetail } from "./ui/NodeDetail";
 import { NodeFormDialog } from "./ui/NodeFormDialog";
 import { NodeList } from "./ui/NodeList";
+import {
+  loadRendererChoice,
+  RENDERER_CHOICES,
+  saveRendererChoice,
+  toggleRendererChoice,
+} from "./ui/rendererPreference";
 import { TalentTree } from "./ui/TalentTree";
 import { usePlanner } from "./ui/usePlanner";
-
-type ViewMode = "tree" | "list";
 
 type Dialog =
   | { type: "none" }
   | { type: "help" }
+  | { type: "diagnostics" }
   | { type: "create" }
   | { type: "edit" }
   | { type: "reset" }
@@ -24,7 +36,10 @@ type Dialog =
 export function App() {
   const planner = usePlanner();
   const [dialog, setDialog] = useState<Dialog>({ type: "none" });
-  const [viewMode, setViewMode] = useState<ViewMode>("tree");
+  const [rendererChoice, setRendererChoice] = useState<RendererChoice>(() =>
+    loadRendererChoice(typeof window === "undefined" ? null : localStorage),
+  );
+  const [activeRenderer, setActiveRenderer] = useState<ActiveRenderer>("classic");
   const [focusSignal, setFocusSignal] = useState(0);
   const [mobileDetail, setMobileDetail] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
@@ -41,8 +56,48 @@ export function App() {
   );
   const treeRef = useRef(tree);
   treeRef.current = tree;
+  const viewMode = rendererChoice === "list" ? "list" : "tree";
   const viewModeRef = useRef(viewMode);
   viewModeRef.current = viewMode;
+  // The tree renderer to return to when the `v` key comes back from the list.
+  const lastTreeChoiceRef = useRef<RendererChoice>(
+    rendererChoice === "list" ? "relic" : rendererChoice,
+  );
+  if (rendererChoice !== "list") lastTreeChoiceRef.current = rendererChoice;
+  const rendererChoiceRef = useRef(rendererChoice);
+  rendererChoiceRef.current = rendererChoice;
+
+  const chooseRenderer = useCallback((choice: RendererChoice) => {
+    setRendererChoice(choice);
+    saveRendererChoice(typeof window === "undefined" ? null : localStorage, choice);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    return installDiagnosticErrorCapture(window);
+  }, []);
+
+  const collect = useCallback(() => {
+    const snapshot = collectDiagnostics({
+      preference: rendererChoice,
+      active: rendererChoice === "list" ? "list" : activeRenderer,
+      plan: {
+        title: plannerRef.current.plan.title,
+        nodeCount: treeRef.current.nodes.length,
+        edgeCount: treeRef.current.edges.length,
+        layout: { width: treeRef.current.width, height: treeRef.current.height },
+      },
+    });
+    if (typeof window !== "undefined") writeDiagnostics(localStorage, snapshot);
+    return snapshot;
+  }, [rendererChoice, activeRenderer]);
+
+  // Leave a snapshot on the device once the board has had a moment to paint, so
+  // a tester who never opens the panel still leaves something to read back.
+  useEffect(() => {
+    const timer = window.setTimeout(() => collect(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [collect]);
 
   useEffect(() => {
     setTitleDraft(planner.plan.title);
@@ -106,7 +161,13 @@ export function App() {
         }
         case "v":
           event.preventDefault();
-          setViewMode((mode) => (mode === "tree" ? "list" : "tree"));
+          chooseRenderer(
+            toggleRendererChoice(rendererChoiceRef.current, lastTreeChoiceRef.current),
+          );
+          break;
+        case "D":
+          event.preventDefault();
+          setDialog({ type: "diagnostics" });
           break;
         case "f":
           event.preventDefault();
@@ -147,7 +208,7 @@ export function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dialog.type]);
+  }, [dialog.type, chooseRenderer]);
 
   const formOpen = dialog.type === "create" || dialog.type === "edit";
 
@@ -208,6 +269,9 @@ export function App() {
           <button type="button" onClick={() => setDialog({ type: "help" })}>
             Help
           </button>
+          <button type="button" onClick={() => setDialog({ type: "diagnostics" })}>
+            Diagnostics
+          </button>
           <input
             ref={importRef}
             className="sr-only"
@@ -263,20 +327,17 @@ export function App() {
               </p>
             </div>
             <div className="view-switch" role="group" aria-label="Plan view">
-              <button
-                type="button"
-                aria-pressed={viewMode === "tree"}
-                onClick={() => setViewMode("tree")}
-              >
-                Talent tree
-              </button>
-              <button
-                type="button"
-                aria-pressed={viewMode === "list"}
-                onClick={() => setViewMode("list")}
-              >
-                List
-              </button>
+              {RENDERER_CHOICES.map((choice) => (
+                <button
+                  key={choice.value}
+                  type="button"
+                  title={choice.hint}
+                  aria-pressed={rendererChoice === choice.value}
+                  onClick={() => chooseRenderer(choice.value)}
+                >
+                  {choice.label}
+                </button>
+              ))}
             </div>
           </div>
           {viewMode === "tree" ? (
@@ -285,6 +346,8 @@ export function App() {
               remaining={planner.remaining}
               explanation={planner.explanation}
               focusSignal={focusSignal}
+              renderer={rendererChoice === "classic" ? "classic" : "relic"}
+              onActiveRendererChange={setActiveRenderer}
               onSelect={(id) => {
                 planner.select(id);
                 setMobileDetail(true);
@@ -327,6 +390,7 @@ export function App() {
           <span><kbd>d</kbd> defer</span>
           <span><kbd>v</kbd> view</span>
           <span><kbd>n</kbd> new</span>
+          <span><kbd>D</kbd> diagnostics</span>
           <span><kbd>?</kbd> help</span>
         </p>
         <p>Missed days are not punished. Unused points expire; unfinished nodes remain.</p>
@@ -343,7 +407,16 @@ export function App() {
           dialog.type === "edit" ? planner.edit(input) : planner.create(input)
         }
       />
-      <HelpDialog open={dialog.type === "help"} onClose={() => setDialog({ type: "none" })} />
+      <HelpDialog
+        open={dialog.type === "help"}
+        onClose={() => setDialog({ type: "none" })}
+        onOpenDiagnostics={() => setDialog({ type: "diagnostics" })}
+      />
+      <DiagnosticsDialog
+        open={dialog.type === "diagnostics"}
+        onClose={() => setDialog({ type: "none" })}
+        collect={collect}
+      />
       <ConfirmDialog
         open={dialog.type === "reset"}
         title="Replace this plan with the demo?"

@@ -3,9 +3,15 @@ import { useEffect, useId, useRef } from "react";
 interface HelpDialogProps {
   open: boolean;
   onClose: () => void;
+  /** Opens the diagnostics panel, for when the tree does not draw. */
+  onOpenDiagnostics?: () => void;
 }
 
-export function HelpDialog({ open, onClose }: HelpDialogProps) {
+export function HelpDialog({
+  open,
+  onClose,
+  onOpenDiagnostics,
+}: HelpDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -102,6 +108,12 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
           </tr>
           <tr>
             <th>
+              <kbd>D</kbd>
+            </th>
+            <td>Diagnostics panel (shift and d)</td>
+          </tr>
+          <tr>
+            <th>
               <kbd>?</kbd>
             </th>
             <td>This help</td>
@@ -120,10 +132,21 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
         plan is saved on this device as JSON. Export a copy; Taltree never uploads
         it.
       </p>
+      <p>
+        The relic tree draws through WebGL. If it comes up black on this device,
+        switch to the classic tree with the view buttons above the board - the
+        choice is remembered - and open diagnostics to see what the board
+        reports.
+      </p>
       <div className="detail-actions">
         <button type="button" className="primary" onClick={onClose}>
           Close
         </button>
+        {onOpenDiagnostics ? (
+          <button type="button" onClick={onOpenDiagnostics}>
+            Diagnostics
+          </button>
+        ) : null}
       </div>
     </dialog>
   );

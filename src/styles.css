@@ -761,6 +761,97 @@ dialog.modal::backdrop {
   background: rgba(28, 38, 31, 0.28);
 }
 
+/* The diagnostics panel is a report, not a form: it needs room and columns. */
+dialog.modal.diagnostics {
+  width: min(760px, calc(100% - 32px));
+  max-height: min(86vh, 900px);
+  overflow: auto;
+}
+
+.diagnostics h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.diag-findings ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.diag-findings li {
+  font-size: 0.94rem;
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+
+.diag-card {
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.diag-card dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.diag-card dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.diag-card dt {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.diag-card dd {
+  margin: 0;
+  font-size: 0.86rem;
+  font-family: var(--font-ui);
+  overflow-wrap: anywhere;
+}
+
+.diag-errors ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.diag-json textarea {
+  width: 100%;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: #fff;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.diagnostics code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82em;
+}
+
 dialog.modal[open],
 dialog.modal[open] form {
   display: grid;

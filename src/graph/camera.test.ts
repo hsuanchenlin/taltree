@@ -3,7 +3,10 @@ import {
   CAMERA_LIMITS,
   CAMERA_MOTION,
   centerCameraOn,
+  clampCameraToContent,
   clampZoom,
+  contentOnScreen,
+  contentScreenRect,
   dragVelocity,
   easeOutCubic,
   ensureVisible,
@@ -15,6 +18,7 @@ import {
   rebaseDragOrigin,
   shouldGlide,
   stepMomentum,
+  visibleContentSize,
   zoomAbout,
   zoomEase,
   zoomSettled,
@@ -345,5 +349,90 @@ describe("focus animation", () => {
       VIEWPORT.height / 2,
       10,
     );
+  });
+});
+
+describe("keeping the tree on the board", () => {
+  const layout = { width: 1200, height: 900 };
+
+  it("maps the tree's screen rectangle from the camera", () => {
+    expect(contentScreenRect(layout, { x: 40, y: 20, k: 0.5 })).toEqual({
+      left: 40,
+      top: 20,
+      right: 640,
+      bottom: 470,
+    });
+  });
+
+  it("measures how much of the tree the board shows", () => {
+    expect(
+      visibleContentSize(layout, { x: -200, y: -100, k: 1 }, VIEWPORT),
+    ).toEqual({ width: 800, height: 600 });
+    expect(
+      visibleContentSize(layout, { x: 760, y: 560, k: 1 }, VIEWPORT),
+    ).toEqual({ width: 40, height: 40 });
+  });
+
+  it("reports a tree that has left the board entirely", () => {
+    expect(contentOnScreen(layout, { x: 0, y: 0, k: 1 }, VIEWPORT)).toBe(true);
+    expect(
+      contentOnScreen(layout, { x: -1300, y: 0, k: 1 }, VIEWPORT),
+    ).toBe(false);
+    expect(contentOnScreen(layout, { x: 900, y: 0, k: 1 }, VIEWPORT)).toBe(
+      false,
+    );
+  });
+
+  it("leaves a camera that already shows the tree untouched", () => {
+    const camera: Camera = { x: -100, y: -50, k: 1 };
+    expect(clampCameraToContent(layout, camera, VIEWPORT)).toBe(camera);
+  });
+
+  it("pulls a camera that pushed the tree off the right edge back into view", () => {
+    const clamped = clampCameraToContent(
+      layout,
+      { x: 5000, y: 0, k: 1 },
+      VIEWPORT,
+    );
+    expect(clamped.x).toBe(VIEWPORT.width - CAMERA_LIMITS.keepVisiblePx);
+    expect(contentOnScreen(layout, clamped, VIEWPORT)).toBe(true);
+  });
+
+  it("pulls a camera that pushed the tree off the top-left back into view", () => {
+    const clamped = clampCameraToContent(
+      layout,
+      { x: -9000, y: -9000, k: 1 },
+      VIEWPORT,
+    );
+    expect(clamped.x).toBe(CAMERA_LIMITS.keepVisiblePx - layout.width);
+    expect(clamped.y).toBe(CAMERA_LIMITS.keepVisiblePx - layout.height);
+    expect(contentOnScreen(layout, clamped, VIEWPORT)).toBe(true);
+  });
+
+  it("keeps the whole of a tree smaller than the keep-visible margin reachable", () => {
+    const tiny = { width: 40, height: 30 };
+    const clamped = clampCameraToContent(tiny, { x: 4000, y: 0, k: 1 }, VIEWPORT);
+    expect(contentOnScreen(tiny, clamped, VIEWPORT)).toBe(true);
+  });
+
+  it("scales the clamp with the zoom", () => {
+    const clamped = clampCameraToContent(
+      layout,
+      { x: -9000, y: 0, k: 0.5 },
+      VIEWPORT,
+    );
+    expect(clamped.x).toBe(CAMERA_LIMITS.keepVisiblePx - layout.width * 0.5);
+  });
+
+  it("leaves an unmeasured board alone, having nothing to clamp against", () => {
+    const camera: Camera = { x: 5000, y: 5000, k: 1 };
+    expect(
+      clampCameraToContent(layout, camera, { width: 0, height: 0 }),
+    ).toBe(camera);
+  });
+
+  it("keeps a fitted camera exactly where the fit put it", () => {
+    const fitted = fitCamera(layout, VIEWPORT);
+    expect(clampCameraToContent(layout, fitted, VIEWPORT)).toBe(fitted);
   });
 });

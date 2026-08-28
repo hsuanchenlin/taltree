@@ -16,6 +16,12 @@ export const CAMERA_LIMITS = {
   maxZoom: 2.4,
   fitPadding: 16,
   visibleMargin: 20,
+  /**
+   * Pixels of the tree that must stay inside the board on each axis. Panning,
+   * gliding, and container resizes are all clamped to this, so the board can
+   * never end up showing an empty slab with the whole tree parked outside it.
+   */
+  keepVisiblePx: 96,
 } as const;
 
 export const READABLE_CAMERA: Camera = { x: 20, y: 20, k: 1 };
@@ -90,6 +96,76 @@ export function fitCamera(
     x: (viewport.width - tree.width * k) / 2,
     y: (viewport.height - tree.height * k) / 2,
   };
+}
+
+/** Screen-space rectangle the whole laid-out tree occupies under a camera. */
+export function contentScreenRect(
+  layout: Pick<LaidOutGraph, "width" | "height">,
+  camera: Camera,
+): { left: number; top: number; right: number; bottom: number } {
+  return {
+    left: camera.x,
+    top: camera.y,
+    right: camera.x + layout.width * camera.k,
+    bottom: camera.y + layout.height * camera.k,
+  };
+}
+
+/** How much of the tree the board actually shows, in screen pixels. */
+export function visibleContentSize(
+  layout: Pick<LaidOutGraph, "width" | "height">,
+  camera: Camera,
+  viewport: ViewportSize,
+): ViewportSize {
+  const rect = contentScreenRect(layout, camera);
+  return {
+    width: Math.max(0, Math.min(rect.right, viewport.width) - Math.max(rect.left, 0)),
+    height: Math.max(0, Math.min(rect.bottom, viewport.height) - Math.max(rect.top, 0)),
+  };
+}
+
+/** Whether any part of the tree is inside the board at all. */
+export function contentOnScreen(
+  layout: Pick<LaidOutGraph, "width" | "height">,
+  camera: Camera,
+  viewport: ViewportSize,
+): boolean {
+  const visible = visibleContentSize(layout, camera, viewport);
+  return visible.width > 0 && visible.height > 0;
+}
+
+/**
+ * The nearest camera that still shows the tree. Every camera write funnels
+ * through this, so a flick, a pinch, or a board that changed size cannot leave
+ * a blank board with the tree scrolled out of sight. An unmeasured board has
+ * nothing to clamp against and is returned unchanged.
+ */
+export function clampCameraToContent(
+  layout: Pick<LaidOutGraph, "width" | "height">,
+  camera: Camera,
+  viewport: ViewportSize,
+): Camera {
+  if (viewport.width <= 0 || viewport.height <= 0) return camera;
+  const contentWidth = Math.max(1, layout.width) * camera.k;
+  const contentHeight = Math.max(1, layout.height) * camera.k;
+  const keepX = Math.min(
+    CAMERA_LIMITS.keepVisiblePx,
+    contentWidth,
+    viewport.width,
+  );
+  const keepY = Math.min(
+    CAMERA_LIMITS.keepVisiblePx,
+    contentHeight,
+    viewport.height,
+  );
+  const x = clamp(camera.x, keepX - contentWidth, viewport.width - keepX);
+  const y = clamp(camera.y, keepY - contentHeight, viewport.height - keepY);
+  if (x === camera.x && y === camera.y) return camera;
+  return { ...camera, x, y };
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, value));
 }
 
 export function ensureVisible(
