@@ -108,6 +108,16 @@ describe("createPidfileHandle", () => {
     handle.clear();
     expect(readPidfile(handle.path)).toMatchObject({ pid: 777 });
   });
+
+  it("keeps the bind winner's record when a contender clears without claiming", () => {
+    const winner = createPidfileHandle({ root, port: 5173, ownerPid: 4242 });
+    const contender = createPidfileHandle({ root, port: 5173, ownerPid: 7777 });
+    winner.record(4243);
+
+    contender.clear();
+
+    expect(readPidfile(winner.path)).toMatchObject({ pid: 4242, serverPid: 4243 });
+  });
 });
 
 describe("isProcessAlive", () => {
