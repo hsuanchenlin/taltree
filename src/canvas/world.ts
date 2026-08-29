@@ -158,7 +158,13 @@ export class RelicWorld {
 
   constructor(app: Application) {
     this.app = app;
-    this.root.isRenderGroup = true;
+    // `root` is a plain transform container, deliberately *not* a render group.
+    // A render group hands its subtree to the GPU as an instruction set of its
+    // own, and a board this size gains nothing from that while inheriting a way
+    // to fail that leaves no trace: when the group's instructions do not rebuild
+    // for a scene that changes underneath them, the slab paints its clear colour
+    // and nothing else, with no error anywhere. Without it the conduits and the
+    // node layer draw in the stage's own render group.
     this.root.addChild(this.conduits);
     this.root.addChild(this.nodeLayer);
     app.stage.addChild(this.root);
