@@ -3,6 +3,7 @@ import type { Camera, LaidOutNode } from "../graph";
 import {
   BLANK_PROBE_LIMIT,
   isBlankSample,
+  shouldContinueBlankWatch,
   socketProbePoints,
 } from "./blankBoard";
 import { socketCenter } from "./relicGeometry";
@@ -105,5 +106,40 @@ describe("isBlankSample", () => {
 
   it("treats an empty read as saying nothing", () => {
     expect(isBlankSample([], CLEAR)).toBe(false);
+  });
+});
+
+describe("shouldContinueBlankWatch", () => {
+  it("allows inconclusive frames without consuming the attempt budget", () => {
+    expect(
+      shouldContinueBlankWatch({
+        conclusiveAttempts: 0,
+        maxConclusiveAttempts: 12,
+        now: 4_999,
+        deadline: 5_000,
+      }),
+    ).toBe(true);
+  });
+
+  it("stops after the conclusive attempt budget is exhausted", () => {
+    expect(
+      shouldContinueBlankWatch({
+        conclusiveAttempts: 12,
+        maxConclusiveAttempts: 12,
+        now: 1_000,
+        deadline: 5_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("bounds an entirely inconclusive watch by its deadline", () => {
+    expect(
+      shouldContinueBlankWatch({
+        conclusiveAttempts: 0,
+        maxConclusiveAttempts: 12,
+        now: 5_000,
+        deadline: 5_000,
+      }),
+    ).toBe(false);
   });
 });

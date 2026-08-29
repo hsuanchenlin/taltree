@@ -27,6 +27,22 @@ export interface BoardSize {
   height: number;
 }
 
+export interface BlankWatchBudget {
+  conclusiveAttempts: number;
+  maxConclusiveAttempts: number;
+  now: number;
+  deadline: number;
+}
+
+export function shouldContinueBlankWatch({
+  conclusiveAttempts,
+  maxConclusiveAttempts,
+  now,
+  deadline,
+}: BlankWatchBudget): boolean {
+  return conclusiveAttempts < maxConclusiveAttempts && now < deadline;
+}
+
 /** Probe points to sample. More than one so a single stray sprite cannot pass. */
 export const BLANK_PROBE_LIMIT = 3;
 

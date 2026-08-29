@@ -1,6 +1,10 @@
 import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { isBlankSample, socketProbePoints } from "../canvas/blankBoard";
+import {
+  isBlankSample,
+  shouldContinueBlankWatch,
+  socketProbePoints,
+} from "../canvas/blankBoard";
 import type { ClearColor } from "../canvas/blankBoard";
 import { RelicWorld } from "../canvas/world";
 import { recordDiagnosticEvent, setRendererProbe } from "../diagnostics";
@@ -41,6 +45,7 @@ const BLANK_STRIKES = 3;
  * person before it could look) is inconclusive, not broken.
  */
 const BLANK_ATTEMPTS = 12;
+const BLANK_WATCH_MS = 5_000;
 
 function resolveResolution(): number {
   if (typeof window === "undefined") return 1;
@@ -148,7 +153,9 @@ export default function TalentTreePixi({
      */
     let blankStrikes = 0;
     let blankAttempts = 0;
+    let blankDeadline = 0;
     let blankWatch: number | null = null;
+    let blankSettled = false;
     // Hoisted function declarations lose the null narrowing above, so the
     // watchdog reads the board through an alias that carries it.
     const board: HTMLDivElement = host;
@@ -184,7 +191,23 @@ export default function TalentTreePixi({
       return pixels;
     }
     function watchAgain() {
-      if (blankAttempts < BLANK_ATTEMPTS) {
+      if (blankAttempts >= BLANK_ATTEMPTS) {
+        blankSettled = true;
+        return;
+      }
+      if (
+        shouldContinueBlankWatch({
+          conclusiveAttempts: blankAttempts,
+          maxConclusiveAttempts: BLANK_ATTEMPTS,
+          now: performance.now(),
+          deadline: blankDeadline,
+        })
+      ) {
+        blankWatch = requestAnimationFrame(checkBoardPainted);
+      }
+    }
+    function promptBlankWatch() {
+      if (!blankSettled && blankWatch === null) {
         blankWatch = requestAnimationFrame(checkBoardPainted);
       }
     }
@@ -194,7 +217,6 @@ export default function TalentTreePixi({
       const gl = (app.renderer as unknown as { gl?: WebGLRenderingContext })
         .gl;
       if (!gl || typeof gl.readPixels !== "function") return;
-      blankAttempts += 1;
       if (document.visibilityState !== "visible") {
         watchAgain();
         return;
@@ -227,15 +249,21 @@ export default function TalentTreePixi({
       } catch (error) {
         // A context that will not be read cannot testify either way.
         recordDiagnosticEvent("pixi.blankProbe", error);
+        watchAgain();
         return;
       }
-      if (painted) return;
+      if (painted) {
+        blankSettled = true;
+        return;
+      }
       if (readable === 0) {
         watchAgain();
         return;
       }
+      blankAttempts += 1;
       blankStrikes += 1;
       if (blankStrikes >= BLANK_STRIKES) {
+        blankSettled = true;
         failRenderer(
           "pixi.blank",
           new Error(
@@ -275,9 +303,13 @@ export default function TalentTreePixi({
               failRenderer("pixi.resize", error);
             }
             renderNow();
+            promptBlankWatch();
           });
     function onVisibilityChange() {
-      if (document.visibilityState === "visible") renderNow();
+      if (document.visibilityState === "visible") {
+        renderNow();
+        promptBlankWatch();
+      }
     }
     const init = app.init({
       canvas,
@@ -320,7 +352,8 @@ export default function TalentTreePixi({
         });
         observer?.observe(host);
         document.addEventListener("visibilitychange", onVisibilityChange);
-        blankWatch = requestAnimationFrame(checkBoardPainted);
+        blankDeadline = performance.now() + BLANK_WATCH_MS;
+        promptBlankWatch();
         releaseProbe = setRendererProbe(
           (): PixiFacts => ({
             isInitialised: ready,
