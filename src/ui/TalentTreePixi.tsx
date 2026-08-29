@@ -2,11 +2,19 @@ import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   advanceBlankWatch,
+  BLANK_ATTEMPTS,
+  BLANK_STRIKES,
+  BLANK_WATCH_MS,
   classifyBlankSample,
   socketProbePoints,
   startBlankWatch,
 } from "../canvas/blankBoard";
 import type { ClearColor } from "../canvas/blankBoard";
+import {
+  applyCanvasFillStyle,
+  hostContentSize,
+  resizeRendererToHost,
+} from "../canvas/canvasSize";
 import { RelicWorld } from "../canvas/world";
 import { recordDiagnosticEvent, setRendererProbe } from "../diagnostics";
 import type { PixiFacts } from "../diagnostics";
@@ -35,18 +43,6 @@ const CLEAR_COLOR: ClearColor = {
 };
 /** Side of the block read back at each probe point, in device pixels. */
 const PROBE_BLOCK = 6;
-/**
- * Consecutive blank readings before the slab is declared a lost cause. One
- * could be a frame caught mid-present; three across three frames could not.
- */
-const BLANK_STRIKES = 3;
-/**
- * How many times the watchdog looks before giving up on ever deciding. A board
- * that never offers a probe point (fully zoomed out, or panned away by the
- * person before it could look) is inconclusive, not broken.
- */
-const BLANK_ATTEMPTS = 12;
-const BLANK_WATCH_MS = 5_000;
 
 function resolveResolution(): number {
   if (typeof window === "undefined") return 1;
@@ -96,6 +92,7 @@ export default function TalentTreePixi({
     // the context its replacement is already rendering with - the blank,
     // error-free slab this guards against.
     const canvas = document.createElement("canvas");
+    applyCanvasFillStyle(canvas.style);
     host.appendChild(canvas);
     const app = new PixiApplication();
     function dispose() {
@@ -145,15 +142,13 @@ export default function TalentTreePixi({
      * and the board still shows nothing but its clear colour. Nothing to catch
      * means nothing falls back, so the drawing buffer is read back where a
      * socket must have been painted. Three blank readings in a row fail the
-     * slab on purpose, and the classic tree takes over.
-     *
-     * Every uncertain answer keeps looking instead of accusing: a board with no
-     * socket big enough or central enough to sample, a read that lands outside
-     * the buffer, a hidden tab, or a renderer with no GL context to read all
-     * leave the slab alone.
+     * slab on purpose, and if nothing has been confirmed painted within
+     * `BLANK_WATCH_MS` the classic tree takes over rather than leaving a
+     * black rectangle.
      */
     let blankState = startBlankWatch(0, BLANK_WATCH_MS);
     let blankWatch: number | null = null;
+    let paintDeadline: ReturnType<typeof window.setTimeout> | null = null;
     // Hoisted function declarations lose the null narrowing above, so the
     // watchdog reads the board through an alias that carries it.
     const board: HTMLDivElement = host;
@@ -285,15 +280,21 @@ export default function TalentTreePixi({
     // changes size for any other reason (the detail panel opening, a layout
     // reflow, a font landing) keeps a stale drawing buffer and paints the wrong
     // slice of the scene - or nothing at all when it was measured at zero.
+    function syncCanvasToHost() {
+      applyCanvasFillStyle(canvas.style);
+      const size = resizeRendererToHost(app.renderer, board);
+      return size;
+    }
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
             if (!ready || !active) return;
             try {
-              app.resize();
+              if (!syncCanvasToHost()) return;
             } catch (error) {
               failRenderer("pixi.resize", error);
+              return;
             }
             renderNow();
             promptBlankWatch();
@@ -304,9 +305,13 @@ export default function TalentTreePixi({
         promptBlankWatch();
       }
     }
+    const initialSize = hostContentSize(board);
     const init = app.init({
       canvas,
       resizeTo: host,
+      ...(initialSize
+        ? { width: initialSize.width, height: initialSize.height }
+        : {}),
       antialias: false,
       roundPixels: true,
       preference: "webgl",
@@ -332,9 +337,10 @@ export default function TalentTreePixi({
         world.setHoveredId(latestRef.current.hoveredId);
         ready = true;
         // The host may have been measured at zero (or have changed size) while
-        // the pixi chunk was still loading; re-read it before the first frame.
+        // the pixi chunk was still loading; re-read it before the first frame
+        // and force CSS fill so autoDensity cannot leave a stale inline size.
         try {
-          app.resize();
+          syncCanvasToHost();
         } catch (error) {
           failRenderer("pixi.resize", error);
         }
@@ -347,6 +353,12 @@ export default function TalentTreePixi({
         document.addEventListener("visibilitychange", onVisibilityChange);
         blankState = startBlankWatch(performance.now(), BLANK_WATCH_MS);
         promptBlankWatch();
+        paintDeadline = window.setTimeout(() => {
+          paintDeadline = null;
+          if (!ready || !active || failed) return;
+          if (blankState.phase === "stopped") return;
+          applyBlankObservation("inconclusive");
+        }, BLANK_WATCH_MS);
         releaseProbe = setRendererProbe(
           (): PixiFacts => ({
             isInitialised: ready,
@@ -372,6 +384,7 @@ export default function TalentTreePixi({
       renderNowRef.current = null;
       releaseProbe?.();
       if (blankWatch !== null) cancelAnimationFrame(blankWatch);
+      if (paintDeadline !== null) window.clearTimeout(paintDeadline);
       observer?.disconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.clearTimeout(timer);

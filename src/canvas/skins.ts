@@ -1,36 +1,29 @@
-import { Graphics, Rectangle, Texture } from "pixi.js";
-import type { Renderer } from "pixi.js";
-import { recordDiagnosticEvent } from "../diagnostics/errorLog";
+import { Graphics } from "pixi.js";
 import type { NodeKind } from "../domain/types";
 import { compositeAlphas, mixColor, radialRadii } from "./radialFill";
 
 /**
- * Procedural relic-slab skins. All socket art is baked once into textures at
- * startup (zero image assets, zero network) and reused by every socket sprite.
+ * Procedural relic-slab skins. Socket, glow, and halo art is drawn into plain
+ * Pixi `Graphics` (zero image assets, zero `generateTexture`, zero
+ * `FillGradient`). A texture bake can come back 0x0 on some WebGL contexts
+ * and leave every socket invisible; live Graphics use the same flat-fill
+ * path the rest of the scene already draws.
  */
-
-export interface RelicSkins {
-  sockets: Record<NodeKind, Texture>;
-  /** Soft radial glow, tinted per use (eligible breathing, selection aura). */
-  glow: Texture;
-  /** Cyan halo ring for unlocks-next. */
-  halo: Texture;
-}
 
 const SIZE = 128;
 const CENTER = SIZE / 2;
 const RIM_RADIUS = 56;
 /** Radius of the soft glow disc, in the same 128px art space as the sockets. */
 const GLOW_RADIUS = 60;
-/** Outer edge of the rim stroke: the radius every sprite size is quoted at. */
+/** Outer edge of the rim stroke: the radius every on-screen size is quoted at. */
 const ART_RADIUS = RIM_RADIUS + 4;
-/** The completed skin's outer halo reaches furthest, so every skin bakes here. */
+/** The completed skin's outer halo reaches furthest, so every skin draws here. */
 const FRAME_RADIUS = RIM_RADIUS + 6;
 
 /**
- * Baked frame over quoted art radius. Without one shared frame each skin's own
- * bounds would set its on-screen scale, and the completed socket - alone in
- * carrying an outer halo - would visibly shrink the moment a node completes.
+ * Shared frame over quoted art radius. Without one shared frame each skin's
+ * own bounds would set its on-screen scale, and the completed socket - alone
+ * in carrying an outer halo - would visibly shrink the moment a node completes.
  */
 export const SKIN_FRAME_SCALE = FRAME_RADIUS / ART_RADIUS;
 
@@ -131,35 +124,6 @@ function speckle(g: Graphics, seed: number): void {
   }
 }
 
-/**
- * Bake one skin into a texture. `generateTexture` is the one step here that
- * needs a working renderer, and a renderer that cannot honour it must not take
- * the whole board down with it: the failure is recorded for diagnostics and the
- * sprite falls back to a plain white square. A visibly wrong socket beats a
- * board that paints nothing and says nothing about why.
- */
-function bake(renderer: Renderer, draw: (g: Graphics) => void): Texture {
-  const g = new Graphics();
-  try {
-    draw(g);
-    return renderer.generateTexture({
-      target: g,
-      resolution: 2,
-      frame: new Rectangle(
-        CENTER - FRAME_RADIUS,
-        CENTER - FRAME_RADIUS,
-        FRAME_RADIUS * 2,
-        FRAME_RADIUS * 2,
-      ),
-    });
-  } catch (error) {
-    recordDiagnosticEvent("skins.bake", error);
-    return Texture.WHITE;
-  } finally {
-    g.destroy();
-  }
-}
-
 /** Exported so its subpaths can be asserted on without a renderer. */
 export function drawBlocked(g: Graphics): void {
   g.circle(CENTER, CENTER, RIM_RADIUS).fill(COLORS.granite);
@@ -230,36 +194,41 @@ export function drawDeferred(g: Graphics): void {
   g.roundRect(CENTER + 4, CENTER - 15, 9, 30, 2).fill(COLORS.bars);
 }
 
-/** Centre and radius of the frame every skin bakes into, for the same test. */
+/** Centre and radius of the frame every skin draws into, for the same test. */
 export const SKIN_ART_CENTER = CENTER;
 export const SKIN_FRAME_RADIUS = FRAME_RADIUS;
 
-export function bakeRelicSkins(renderer: Renderer): RelicSkins {
-  return {
-    sockets: {
-      blocked: bake(renderer, drawBlocked),
-      eligible: bake(renderer, drawEligible),
-      completed: bake(renderer, drawCompleted),
-      deferred: bake(renderer, drawDeferred),
-    },
-    glow: bake(renderer, (g) => fillGlow(g, GLOW_RADIUS)),
-    halo: bake(renderer, (g) => {
-      g.circle(CENTER, CENTER, 58).stroke({ width: 5, color: COLORS.cyan });
-    }),
-  };
+const SOCKET_DRAWERS: Record<NodeKind, (g: Graphics) => void> = {
+  blocked: drawBlocked,
+  eligible: drawEligible,
+  completed: drawCompleted,
+  deferred: drawDeferred,
+};
+
+/** Draw one socket kind into `g`, replacing whatever it held before. */
+export function paintSocket(g: Graphics, kind: NodeKind): void {
+  g.clear();
+  SOCKET_DRAWERS[kind](g);
 }
 
-export function destroyRelicSkins(skins: RelicSkins): void {
-  for (const texture of Object.values(skins.sockets)) release(texture);
-  release(skins.glow);
-  release(skins.halo);
+/** Soft white glow disc, tinted and blended by the world. */
+export function paintGlow(g: Graphics): void {
+  g.clear();
+  fillGlow(g, GLOW_RADIUS);
+}
+
+/** Cyan halo ring for unlocks-next. */
+export function paintHalo(g: Graphics): void {
+  g.clear();
+  g.circle(CENTER, CENTER, 58).stroke({ width: 5, color: COLORS.cyan });
 }
 
 /**
- * A baked skin owns its texture and frees it; the shared `Texture.WHITE` a
- * failed bake falls back to is Pixi's own and outlives every world.
+ * Put the art's centre on the node's origin and scale the shared frame so a
+ * `displaySize` CSS-pixel box matches the quoted socket, glow, or halo size.
  */
-function release(texture: Texture): void {
-  if (texture === Texture.WHITE) return;
-  texture.destroy(true);
+export function layoutSkinGraphic(g: Graphics, displaySize: number): void {
+  g.pivot.set(CENTER, CENTER);
+  const scale = displaySize / (FRAME_RADIUS * 2);
+  g.scale.set(scale);
 }

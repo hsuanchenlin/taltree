@@ -42,6 +42,24 @@ export interface BlankWatchTransition {
   action: BlankWatchAction;
 }
 
+/**
+ * How long the host waits for a confirmed paint before failing the slab so
+ * the classic tree can take over. Long enough for a couple of real frames,
+ * short enough that a silent black board cannot sit there.
+ */
+export const BLANK_WATCH_MS = 800;
+/**
+ * Consecutive blank readings before the slab is declared a lost cause. One
+ * could be a frame caught mid-present; three across three frames could not.
+ */
+export const BLANK_STRIKES = 3;
+/**
+ * How many conclusive looks before giving up on ever deciding. A board that
+ * never offers a probe point is handled by the watch window instead: at the
+ * deadline an unpainted board fails closed.
+ */
+export const BLANK_ATTEMPTS = 12;
+
 export function startBlankWatch(now: number, watchMs: number): BlankWatchState {
   return {
     phase: "waiting",
@@ -65,7 +83,10 @@ export function advanceBlankWatch(
   }
   if (observation === "inconclusive") {
     if (now < state.deadline) return { state, action: "retry" };
-    return { state: { ...state, phase: "stopped" }, action: "stop" };
+    // Fail closed: an unreadable or never-painted board is the silent black
+    // rectangle this watchdog exists to leave. A working slab reports
+    // "painted" well inside the window.
+    return { state: { ...state, phase: "stopped" }, action: "fail" };
   }
 
   const next: BlankWatchState = {

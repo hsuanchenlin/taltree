@@ -5,6 +5,10 @@ import {
   drawCompleted,
   drawDeferred,
   drawEligible,
+  layoutSkinGraphic,
+  paintGlow,
+  paintHalo,
+  paintSocket,
   SKIN_ART_CENTER,
   SKIN_FRAME_RADIUS,
 } from "./skins";
@@ -96,5 +100,38 @@ describe("the blocked socket skin", () => {
     const g = contextOf(drawBlocked);
     expect(polygonVertices(g).length).toBeGreaterThan(0);
     g.destroy();
+  });
+});
+
+describe("layoutSkinGraphic", () => {
+  it("puts the art centre on the origin and scales the shared frame to the display size", () => {
+    const g = new Graphics();
+    layoutSkinGraphic(g, SKIN_FRAME_RADIUS * 2);
+    expect(g.pivot.x).toBe(SKIN_ART_CENTER);
+    expect(g.pivot.y).toBe(SKIN_ART_CENTER);
+    expect(g.scale.x).toBe(1);
+    expect(g.scale.y).toBe(1);
+    layoutSkinGraphic(g, SKIN_FRAME_RADIUS);
+    expect(g.scale.x).toBe(0.5);
+    g.destroy();
+  });
+});
+
+describe("live Graphics paints", () => {
+  it("paints a socket, glow, and halo without a gradient", () => {
+    const socket = new Graphics();
+    paintSocket(socket, "eligible");
+    const glow = new Graphics();
+    paintGlow(glow);
+    const halo = new Graphics();
+    paintHalo(halo);
+    for (const g of [socket, glow, halo]) {
+      expect(g.context.instructions.length).toBeGreaterThan(0);
+      const styles = g.context.instructions
+        .filter((instruction) => instruction.action === "fill")
+        .map((instruction) => instruction.data.style);
+      expect(styles.filter(isGradient)).toEqual([]);
+      g.destroy();
+    }
   });
 });
