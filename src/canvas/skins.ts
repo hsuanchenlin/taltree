@@ -58,7 +58,7 @@ const COLORS = {
  * texture of its own and draw the shape through a local-space UV transform: an
  * extra texture upload and shader path, per skin, on contexts where that path
  * is exactly what fails silently and leaves the socket blank. Stacked circles
- * use nothing but the flat fills the rest of the skin already draws, and bake
+ * use nothing but the flat fills the rest of the skin already draws, and draw
  * without a DOM canvas, so every skin is unit-testable in the node environment.
  */
 function fillRadial(
@@ -100,7 +100,7 @@ function glowAlphaAt(u: number): number {
   return 0.45 * (1 - (u - knee) / (1 - knee));
 }
 
-/** Deterministic tiny PRNG so granite speckles bake identically every launch. */
+/** Deterministic tiny PRNG so granite speckles land identically in every socket. */
 function mulberry32(seed: number): () => number {
   let a = seed;
   return () => {

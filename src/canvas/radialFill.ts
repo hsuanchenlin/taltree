@@ -4,7 +4,7 @@
  * The relic skins used to reach for Pixi's `FillGradient`, which bakes a canvas
  * 2D gradient into a texture of its own and draws the shape through a
  * local-space UV transform. That is a second texture upload and a second shader
- * path for art that is otherwise four small static images, and it is a path
+ * path for art that is otherwise flat circles and strokes, and it is a path
  * that can come back empty without raising anything - a socket that silently
  * disappears. Stacking circles needs nothing but the flat fills the rest of the
  * skin already draws.
@@ -16,7 +16,7 @@
  * Rings per unit of radius. A fixed ring count bands visibly on the widest
  * fill - the soft glow, whose opacity ramp is the one a person can see steps
  * in - so the count follows the radius instead: three rings per unit keeps
- * every ring under half a pixel at the 2x resolution the skins bake at.
+ * every ring under half a pixel at the 2x renderer resolution the skins draw at.
  */
 const RINGS_PER_RADIUS = 3;
 
