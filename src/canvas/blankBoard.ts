@@ -146,30 +146,27 @@ export interface ClearColor {
 /** Per-channel slack, so dithering or a colour-managed swap chain still counts. */
 const CLEAR_TOLERANCE = 8;
 
-/**
- * Whether an RGBA block read back from the board is nothing but its clear
- * colour.
- *
- * Deliberately one-sided: every uncertain answer is `false`. An empty read, or
- * a fully transparent one - which is what a read that never reached the drawing
- * buffer looks like - says nothing about what the board shows, and must never
- * be the reason a working slab is torn down.
- */
-export function isBlankSample(
+export type BlankSampleResult = "inconclusive" | "blank" | "painted";
+
+export function classifyBlankSample(
   pixels: ArrayLike<number>,
   clear: ClearColor,
   tolerance: number = CLEAR_TOLERANCE,
-): boolean {
-  if (pixels.length < 4) return false;
+): BlankSampleResult {
+  if (pixels.length < 4) return "inconclusive";
+  let hasTransparentPixel = false;
   for (let i = 0; i + 3 < pixels.length; i += 4) {
-    if (pixels[i + 3] === 0) return false;
+    if (pixels[i + 3] === 0) {
+      hasTransparentPixel = true;
+      continue;
+    }
     if (
       Math.abs(pixels[i]! - clear.r) > tolerance ||
       Math.abs(pixels[i + 1]! - clear.g) > tolerance ||
       Math.abs(pixels[i + 2]! - clear.b) > tolerance
     ) {
-      return false;
+      return "painted";
     }
   }
-  return true;
+  return hasTransparentPixel ? "inconclusive" : "blank";
 }

@@ -3,7 +3,7 @@ import type { Camera, LaidOutNode } from "../graph";
 import {
   BLANK_PROBE_LIMIT,
   advanceBlankWatch,
-  isBlankSample,
+  classifyBlankSample,
   socketProbePoints,
   startBlankWatch,
 } from "./blankBoard";
@@ -85,28 +85,33 @@ describe("socketProbePoints", () => {
   });
 });
 
-describe("isBlankSample", () => {
+describe("classifyBlankSample", () => {
   it("calls a block of nothing but the clear colour blank", () => {
-    expect(isBlankSample(block(0x0c, 0x10, 0x16), CLEAR)).toBe(true);
+    expect(classifyBlankSample(block(0x0c, 0x10, 0x16), CLEAR)).toBe("blank");
   });
 
   it("allows a channel or two of slack for a colour-managed swap chain", () => {
-    expect(isBlankSample(block(0x0e, 0x0d, 0x1a), CLEAR)).toBe(true);
+    expect(classifyBlankSample(block(0x0e, 0x0d, 0x1a), CLEAR)).toBe("blank");
   });
 
-  it("is not blank once any pixel carries socket art", () => {
+  it("calls a block painted once any pixel carries socket art", () => {
     const pixels = [...block(0x0c, 0x10, 0x16, 3), ...block(0x46, 0xc7, 0x8f, 1)];
-    expect(isBlankSample(pixels, CLEAR)).toBe(false);
+    expect(classifyBlankSample(pixels, CLEAR)).toBe("painted");
   });
 
-  it("treats a fully transparent read as saying nothing, not as blank", () => {
-    // A read that never reached the drawing buffer comes back as zeroes; it
-    // must never be the reason a working slab is torn down.
-    expect(isBlankSample(block(0, 0, 0, 4, 0), CLEAR)).toBe(false);
+  it("calls a fully transparent read inconclusive", () => {
+    expect(classifyBlankSample(block(0, 0, 0, 4, 0), CLEAR)).toBe(
+      "inconclusive",
+    );
   });
 
-  it("treats an empty read as saying nothing", () => {
-    expect(isBlankSample([], CLEAR)).toBe(false);
+  it("prefers painted pixels over transparent pixels in a mixed block", () => {
+    const pixels = [...block(0, 0, 0, 1, 0), ...block(0x46, 0xc7, 0x8f, 1)];
+    expect(classifyBlankSample(pixels, CLEAR)).toBe("painted");
+  });
+
+  it("calls an empty read inconclusive", () => {
+    expect(classifyBlankSample([], CLEAR)).toBe("inconclusive");
   });
 });
 

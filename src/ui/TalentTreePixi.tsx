@@ -2,7 +2,7 @@ import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   advanceBlankWatch,
-  isBlankSample,
+  classifyBlankSample,
   socketProbePoints,
   startBlankWatch,
 } from "../canvas/blankBoard";
@@ -242,17 +242,18 @@ export default function TalentTreePixi({
       // rather than whatever survived the last compositing pass.
       renderNow();
       const resolution = app.renderer.resolution || 1;
-      let readable = 0;
+      let blank = false;
       let painted = false;
       try {
         for (const point of points) {
           const pixels = readProbe(gl, point.x, point.y, resolution);
           if (!pixels) continue;
-          readable += 1;
-          if (!isBlankSample(pixels, CLEAR_COLOR)) {
+          const result = classifyBlankSample(pixels, CLEAR_COLOR);
+          if (result === "painted") {
             painted = true;
             break;
           }
+          if (result === "blank") blank = true;
         }
       } catch (error) {
         // A context that will not be read cannot testify either way.
@@ -264,11 +265,7 @@ export default function TalentTreePixi({
         applyBlankObservation("painted");
         return;
       }
-      if (readable === 0) {
-        applyBlankObservation("inconclusive");
-        return;
-      }
-      applyBlankObservation("blank");
+      applyBlankObservation(blank ? "blank" : "inconclusive");
     }
     // A lost context presents as a blank slab with no console error. Degrade
     // to the DOM tree through the error boundary instead of staying blank.
