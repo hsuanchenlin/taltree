@@ -128,7 +128,6 @@ describe("advanceBlankWatch", () => {
       state,
       observation,
       now,
-      BLANK_WATCH_MS,
       BLANK_ATTEMPTS,
       BLANK_STRIKES,
     );
@@ -148,6 +147,13 @@ describe("advanceBlankWatch", () => {
     transition = step(transition.state, "blank", 450);
     transition = step(transition.state, "blank", 500);
     transition = step(transition.state, "blank", 550);
+    expect(transition.action).toBe("fail");
+  });
+
+  it("preserves the mount deadline after blank samples", () => {
+    let transition = step(startBlankWatch(0, BLANK_WATCH_MS), "blank", 799);
+    expect(transition.state.deadline).toBe(BLANK_WATCH_MS);
+    transition = step(transition.state, "blank", BLANK_WATCH_MS);
     expect(transition.action).toBe("fail");
   });
 

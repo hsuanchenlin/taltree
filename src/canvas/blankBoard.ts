@@ -73,7 +73,6 @@ export function advanceBlankWatch(
   state: BlankWatchState,
   observation: BlankWatchObservation,
   now: number,
-  watchMs: number,
   maxConclusiveAttempts: number,
   blankStrikeLimit: number,
 ): BlankWatchTransition {
@@ -81,19 +80,18 @@ export function advanceBlankWatch(
   if (observation === "painted") {
     return { state: { ...state, phase: "stopped" }, action: "stop" };
   }
-  if (observation === "inconclusive") {
-    if (now < state.deadline) return { state, action: "retry" };
-    // Fail closed: an unreadable or never-painted board is the silent black
-    // rectangle this watchdog exists to leave. A working slab reports
-    // "painted" well inside the window.
+  if (now >= state.deadline) {
     return { state: { ...state, phase: "stopped" }, action: "fail" };
+  }
+  if (observation === "inconclusive") {
+    return { state, action: "retry" };
   }
 
   const next: BlankWatchState = {
     phase: "probing",
     blankStrikes: state.blankStrikes + 1,
     conclusiveAttempts: state.conclusiveAttempts + 1,
-    deadline: now + watchMs,
+    deadline: state.deadline,
   };
   if (next.blankStrikes >= blankStrikeLimit) {
     return { state: { ...next, phase: "stopped" }, action: "fail" };

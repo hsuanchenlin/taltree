@@ -146,9 +146,19 @@ export default function TalentTreePixi({
      * `BLANK_WATCH_MS` the classic tree takes over rather than leaving a
      * black rectangle.
      */
-    let blankState = startBlankWatch(0, BLANK_WATCH_MS);
+    let blankState = startBlankWatch(performance.now(), BLANK_WATCH_MS);
     let blankWatch: number | null = null;
-    let paintDeadline: ReturnType<typeof window.setTimeout> | null = null;
+    let paintDeadline: ReturnType<typeof window.setTimeout> | null =
+      window.setTimeout(() => {
+        paintDeadline = null;
+        if (!active || failed || blankState.phase === "stopped") return;
+        failRenderer(
+          "pixi.blank",
+          new Error(
+            "The relic slab did not confirm visible socket art within 800ms.",
+          ),
+        );
+      }, BLANK_WATCH_MS);
     // Hoisted function declarations lose the null narrowing above, so the
     // watchdog reads the board through an alias that carries it.
     const board: HTMLDivElement = host;
@@ -190,7 +200,6 @@ export default function TalentTreePixi({
         blankState,
         observation,
         performance.now(),
-        BLANK_WATCH_MS,
         BLANK_ATTEMPTS,
         BLANK_STRIKES,
       );
@@ -198,12 +207,19 @@ export default function TalentTreePixi({
       if (transition.action === "retry") {
         blankWatch = requestAnimationFrame(checkBoardPainted);
       } else if (transition.action === "fail") {
+        if (paintDeadline !== null) {
+          window.clearTimeout(paintDeadline);
+          paintDeadline = null;
+        }
         failRenderer(
           "pixi.blank",
           new Error(
             "The relic slab presented frames but painted no socket art on the board.",
           ),
         );
+      } else if (paintDeadline !== null) {
+        window.clearTimeout(paintDeadline);
+        paintDeadline = null;
       }
     }
     function promptBlankWatch() {
@@ -351,14 +367,7 @@ export default function TalentTreePixi({
         });
         observer?.observe(host);
         document.addEventListener("visibilitychange", onVisibilityChange);
-        blankState = startBlankWatch(performance.now(), BLANK_WATCH_MS);
         promptBlankWatch();
-        paintDeadline = window.setTimeout(() => {
-          paintDeadline = null;
-          if (!ready || !active || failed) return;
-          if (blankState.phase === "stopped") return;
-          applyBlankObservation("inconclusive");
-        }, BLANK_WATCH_MS);
         releaseProbe = setRendererProbe(
           (): PixiFacts => ({
             isInitialised: ready,
