@@ -27,20 +27,60 @@ export interface BoardSize {
   height: number;
 }
 
-export interface BlankWatchBudget {
+export interface BlankWatchState {
+  phase: "waiting" | "probing" | "stopped";
+  blankStrikes: number;
   conclusiveAttempts: number;
-  maxConclusiveAttempts: number;
-  now: number;
   deadline: number;
 }
 
-export function shouldContinueBlankWatch({
-  conclusiveAttempts,
-  maxConclusiveAttempts,
-  now,
-  deadline,
-}: BlankWatchBudget): boolean {
-  return conclusiveAttempts < maxConclusiveAttempts && now < deadline;
+export type BlankWatchObservation = "inconclusive" | "blank" | "painted";
+export type BlankWatchAction = "retry" | "stop" | "fail";
+
+export interface BlankWatchTransition {
+  state: BlankWatchState;
+  action: BlankWatchAction;
+}
+
+export function startBlankWatch(now: number, watchMs: number): BlankWatchState {
+  return {
+    phase: "waiting",
+    blankStrikes: 0,
+    conclusiveAttempts: 0,
+    deadline: now + watchMs,
+  };
+}
+
+export function advanceBlankWatch(
+  state: BlankWatchState,
+  observation: BlankWatchObservation,
+  now: number,
+  watchMs: number,
+  maxConclusiveAttempts: number,
+  blankStrikeLimit: number,
+): BlankWatchTransition {
+  if (state.phase === "stopped") return { state, action: "stop" };
+  if (observation === "painted") {
+    return { state: { ...state, phase: "stopped" }, action: "stop" };
+  }
+  if (observation === "inconclusive") {
+    if (now < state.deadline) return { state, action: "retry" };
+    return { state: { ...state, phase: "stopped" }, action: "stop" };
+  }
+
+  const next: BlankWatchState = {
+    phase: "probing",
+    blankStrikes: state.blankStrikes + 1,
+    conclusiveAttempts: state.conclusiveAttempts + 1,
+    deadline: now + watchMs,
+  };
+  if (next.blankStrikes >= blankStrikeLimit) {
+    return { state: { ...next, phase: "stopped" }, action: "fail" };
+  }
+  if (next.conclusiveAttempts >= maxConclusiveAttempts) {
+    return { state: { ...next, phase: "stopped" }, action: "stop" };
+  }
+  return { state: next, action: "retry" };
 }
 
 /** Probe points to sample. More than one so a single stray sprite cannot pass. */

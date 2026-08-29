@@ -1,9 +1,10 @@
 import { Application as PixiApplication } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  advanceBlankWatch,
   isBlankSample,
-  shouldContinueBlankWatch,
   socketProbePoints,
+  startBlankWatch,
 } from "../canvas/blankBoard";
 import type { ClearColor } from "../canvas/blankBoard";
 import { RelicWorld } from "../canvas/world";
@@ -151,11 +152,8 @@ export default function TalentTreePixi({
      * the buffer, a hidden tab, or a renderer with no GL context to read all
      * leave the slab alone.
      */
-    let blankStrikes = 0;
-    let blankAttempts = 0;
-    let blankDeadline = 0;
+    let blankState = startBlankWatch(0, BLANK_WATCH_MS);
     let blankWatch: number | null = null;
-    let blankSettled = false;
     // Hoisted function declarations lose the null narrowing above, so the
     // watchdog reads the board through an alias that carries it.
     const board: HTMLDivElement = host;
@@ -190,24 +188,31 @@ export default function TalentTreePixi({
       );
       return pixels;
     }
-    function watchAgain() {
-      if (blankAttempts >= BLANK_ATTEMPTS) {
-        blankSettled = true;
-        return;
-      }
-      if (
-        shouldContinueBlankWatch({
-          conclusiveAttempts: blankAttempts,
-          maxConclusiveAttempts: BLANK_ATTEMPTS,
-          now: performance.now(),
-          deadline: blankDeadline,
-        })
-      ) {
+    function applyBlankObservation(
+      observation: "inconclusive" | "blank" | "painted",
+    ) {
+      const transition = advanceBlankWatch(
+        blankState,
+        observation,
+        performance.now(),
+        BLANK_WATCH_MS,
+        BLANK_ATTEMPTS,
+        BLANK_STRIKES,
+      );
+      blankState = transition.state;
+      if (transition.action === "retry") {
         blankWatch = requestAnimationFrame(checkBoardPainted);
+      } else if (transition.action === "fail") {
+        failRenderer(
+          "pixi.blank",
+          new Error(
+            "The relic slab presented frames but painted no socket art on the board.",
+          ),
+        );
       }
     }
     function promptBlankWatch() {
-      if (!blankSettled && blankWatch === null) {
+      if (blankState.phase !== "stopped" && blankWatch === null) {
         blankWatch = requestAnimationFrame(checkBoardPainted);
       }
     }
@@ -216,9 +221,12 @@ export default function TalentTreePixi({
       if (!ready || !active || failed) return;
       const gl = (app.renderer as unknown as { gl?: WebGLRenderingContext })
         .gl;
-      if (!gl || typeof gl.readPixels !== "function") return;
+      if (!gl || typeof gl.readPixels !== "function") {
+        applyBlankObservation("inconclusive");
+        return;
+      }
       if (document.visibilityState !== "visible") {
-        watchAgain();
+        applyBlankObservation("inconclusive");
         return;
       }
       const points = socketProbePoints(
@@ -227,7 +235,7 @@ export default function TalentTreePixi({
         { width: board.clientWidth, height: board.clientHeight },
       );
       if (points.length === 0) {
-        watchAgain();
+        applyBlankObservation("inconclusive");
         return;
       }
       // Present a frame here, so what is read back is the frame just drawn
@@ -249,30 +257,18 @@ export default function TalentTreePixi({
       } catch (error) {
         // A context that will not be read cannot testify either way.
         recordDiagnosticEvent("pixi.blankProbe", error);
-        watchAgain();
+        applyBlankObservation("inconclusive");
         return;
       }
       if (painted) {
-        blankSettled = true;
+        applyBlankObservation("painted");
         return;
       }
       if (readable === 0) {
-        watchAgain();
+        applyBlankObservation("inconclusive");
         return;
       }
-      blankAttempts += 1;
-      blankStrikes += 1;
-      if (blankStrikes >= BLANK_STRIKES) {
-        blankSettled = true;
-        failRenderer(
-          "pixi.blank",
-          new Error(
-            "The relic slab presented frames but painted no socket art on the board.",
-          ),
-        );
-        return;
-      }
-      watchAgain();
+      applyBlankObservation("blank");
     }
     // A lost context presents as a blank slab with no console error. Degrade
     // to the DOM tree through the error boundary instead of staying blank.
@@ -352,7 +348,7 @@ export default function TalentTreePixi({
         });
         observer?.observe(host);
         document.addEventListener("visibilitychange", onVisibilityChange);
-        blankDeadline = performance.now() + BLANK_WATCH_MS;
+        blankState = startBlankWatch(performance.now(), BLANK_WATCH_MS);
         promptBlankWatch();
         releaseProbe = setRendererProbe(
           (): PixiFacts => ({

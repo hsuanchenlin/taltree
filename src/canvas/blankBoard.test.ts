@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Camera, LaidOutNode } from "../graph";
 import {
   BLANK_PROBE_LIMIT,
+  advanceBlankWatch,
   isBlankSample,
-  shouldContinueBlankWatch,
   socketProbePoints,
+  startBlankWatch,
 } from "./blankBoard";
 import { socketCenter } from "./relicGeometry";
 
@@ -109,37 +110,40 @@ describe("isBlankSample", () => {
   });
 });
 
-describe("shouldContinueBlankWatch", () => {
-  it("allows inconclusive frames without consuming the attempt budget", () => {
-    expect(
-      shouldContinueBlankWatch({
-        conclusiveAttempts: 0,
-        maxConclusiveAttempts: 12,
-        now: 4_999,
-        deadline: 5_000,
-      }),
-    ).toBe(true);
+describe("advanceBlankWatch", () => {
+  const step = (
+    state: ReturnType<typeof startBlankWatch>,
+    observation: "inconclusive" | "blank" | "painted",
+    now: number,
+  ) => advanceBlankWatch(state, observation, now, 5_000, 12, 3);
+
+  it("stops an inconclusive run at the deadline without failing", () => {
+    const initial = startBlankWatch(0, 5_000);
+    expect(step(initial, "inconclusive", 4_999).action).toBe("retry");
+    expect(step(initial, "inconclusive", 5_000).action).toBe("stop");
   });
 
-  it("stops after the conclusive attempt budget is exhausted", () => {
-    expect(
-      shouldContinueBlankWatch({
-        conclusiveAttempts: 12,
-        maxConclusiveAttempts: 12,
-        now: 1_000,
-        deadline: 5_000,
-      }),
-    ).toBe(false);
+  it("fails after three conclusive blanks following an inconclusive run", () => {
+    let transition = step(startBlankWatch(0, 5_000), "inconclusive", 4_000);
+    transition = step(transition.state, "blank", 4_500);
+    transition = step(transition.state, "blank", 5_000);
+    transition = step(transition.state, "blank", 5_500);
+    expect(transition.action).toBe("fail");
   });
 
-  it("bounds an entirely inconclusive watch by its deadline", () => {
-    expect(
-      shouldContinueBlankWatch({
-        conclusiveAttempts: 0,
-        maxConclusiveAttempts: 12,
-        now: 5_000,
-        deadline: 5_000,
-      }),
-    ).toBe(false);
+  it("stops when a conclusive read finds painted pixels", () => {
+    const transition = step(startBlankWatch(0, 5_000), "painted", 1_000);
+    expect(transition.action).toBe("stop");
+    expect(transition.state.phase).toBe("stopped");
+  });
+
+  it("preserves blank strikes across inconclusive frames", () => {
+    let transition = step(startBlankWatch(0, 5_000), "blank", 1_000);
+    transition = step(transition.state, "inconclusive", 2_000);
+    expect(transition.state.blankStrikes).toBe(1);
+    transition = step(transition.state, "blank", 3_000);
+    transition = step(transition.state, "inconclusive", 4_000);
+    transition = step(transition.state, "blank", 5_000);
+    expect(transition.action).toBe("fail");
   });
 });
