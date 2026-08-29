@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
+import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import type { Application, Ticker } from "pixi.js";
 import type { Camera, LaidOutEdge, LaidOutGraph, LaidOutNode } from "../graph";
 import { KIND_LABEL, pointsLabel } from "../ui/format";
@@ -24,14 +24,19 @@ import {
   SOCKET_RADIUS,
   socketCenter,
 } from "./relicGeometry";
-import { bakeRelicSkins, destroyRelicSkins, SKIN_FRAME_SCALE } from "./skins";
-import type { RelicSkins } from "./skins";
+import {
+  layoutSkinGraphic,
+  paintGlow,
+  paintHalo,
+  paintSocket,
+  SKIN_FRAME_SCALE,
+} from "./skins";
 
 /**
  * Imperative Pixi scene for the relic slab. Pixi is a renderer only: it
  * consumes `LaidOutGraph` plus the existing camera and never re-derives kinds,
  * unlocks, layout, or camera math. React hands snapshots in via `update` and
- * `setCamera`; the world diffs by node id and mutates sprites in place.
+ * `setCamera`; the world diffs by node id and mutates Graphics in place.
  */
 
 const CONDUIT_GROOVE = 0x05070a;
@@ -50,8 +55,8 @@ const PLAQUE_FADE_RATE = 8;
 
 const FONT_UI = '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif';
 
-// Skin sizes are quoted at the art's rim radius; the baked frame is slightly
-// wider so the completed halo fits, so every sprite scales up to match.
+// Skin sizes are quoted at the art's rim radius; the shared frame is slightly
+// wider so the completed halo fits, so every graphic scales up to match.
 const SOCKET_SIZE = SOCKET_RADIUS * 2 * SKIN_FRAME_SCALE;
 const AURA_SIZE = 112 * SKIN_FRAME_SCALE;
 const GLOW_SIZE = 96 * SKIN_FRAME_SCALE;
@@ -69,11 +74,12 @@ const CAPTION_COLORS = {
 interface NodeView {
   container: Container;
   node: LaidOutNode;
-  socket: Sprite;
-  glow: Sprite;
-  halo: Sprite;
-  aura: Sprite;
+  socket: Graphics;
+  glow: Graphics;
+  halo: Graphics;
+  aura: Graphics;
   ring: Graphics;
+  paintedKind: LaidOutNode["kind"];
   plaque: Container;
   plaqueBg: Graphics;
   plaqueTitle: Text;
@@ -146,7 +152,6 @@ export class RelicWorld {
   private readonly root = new Container();
   private readonly conduits = new Graphics();
   private readonly nodeLayer = new Container();
-  private readonly skins: RelicSkins;
   private readonly nodes = new Map<string, NodeView>();
   private lastNodes: readonly LaidOutNode[] = [];
   private edgeSignature = "";
@@ -168,7 +173,6 @@ export class RelicWorld {
     this.root.addChild(this.conduits);
     this.root.addChild(this.nodeLayer);
     app.stage.addChild(this.root);
-    this.skins = bakeRelicSkins(app.renderer);
     this.reducedMotion =
       typeof matchMedia !== "undefined" &&
       matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -237,7 +241,6 @@ export class RelicWorld {
     this.app.stage.removeChild(this.root);
     this.root.destroy({ children: true });
     this.nodes.clear();
-    destroyRelicSkins(this.skins);
   }
 
   private tick(ticker: Ticker): void {
@@ -263,29 +266,25 @@ export class RelicWorld {
 
   private createNodeView(node: LaidOutNode): NodeView {
     const container = new Container();
-    const aura = new Sprite(this.skins.glow);
-    aura.anchor.set(0.5);
-    aura.width = AURA_SIZE;
-    aura.height = AURA_SIZE;
+    const aura = new Graphics();
+    paintGlow(aura);
+    layoutSkinGraphic(aura, AURA_SIZE);
     aura.tint = AURA_TINT;
     aura.alpha = 0.4;
     aura.blendMode = "add";
-    const glow = new Sprite(this.skins.glow);
-    glow.anchor.set(0.5);
-    glow.width = GLOW_SIZE;
-    glow.height = GLOW_SIZE;
+    const glow = new Graphics();
+    paintGlow(glow);
+    layoutSkinGraphic(glow, GLOW_SIZE);
     glow.tint = 0xffd27a;
     glow.alpha = this.reducedMotion ? BREATH_BASE + BREATH_AMPLITUDE : BREATH_BASE;
     glow.blendMode = "add";
-    const halo = new Sprite(this.skins.halo);
-    halo.anchor.set(0.5);
-    halo.width = HALO_SIZE;
-    halo.height = HALO_SIZE;
+    const halo = new Graphics();
+    paintHalo(halo);
+    layoutSkinGraphic(halo, HALO_SIZE);
     halo.alpha = 0.9;
-    const socket = new Sprite(this.skins.sockets[node.kind]);
-    socket.anchor.set(0.5);
-    socket.width = SOCKET_SIZE;
-    socket.height = SOCKET_SIZE;
+    const socket = new Graphics();
+    paintSocket(socket, node.kind);
+    layoutSkinGraphic(socket, SOCKET_SIZE);
     const ring = new Graphics();
 
     const plaque = new Container();
@@ -343,6 +342,7 @@ export class RelicWorld {
       halo,
       aura,
       ring,
+      paintedKind: node.kind,
       plaque,
       plaqueBg,
       plaqueTitle,
@@ -357,7 +357,11 @@ export class RelicWorld {
   private applyNode(view: NodeView, node: LaidOutNode): void {
     const center = socketCenter(node);
     view.container.position.set(center.x, center.y);
-    view.socket.texture = this.skins.sockets[node.kind];
+    if (view.paintedKind !== node.kind) {
+      paintSocket(view.socket, node.kind);
+      layoutSkinGraphic(view.socket, SOCKET_SIZE);
+      view.paintedKind = node.kind;
+    }
     view.glow.visible = node.kind === "eligible";
     view.halo.visible = node.unlocksIfCompleted;
     view.aura.visible = node.selected;

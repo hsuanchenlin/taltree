@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Camera, LaidOutNode } from "../graph";
 import {
+  BLANK_ATTEMPTS,
   BLANK_PROBE_LIMIT,
+  BLANK_STRIKES,
+  BLANK_WATCH_MS,
   advanceBlankWatch,
   classifyBlankSample,
   socketProbePoints,
@@ -120,35 +123,53 @@ describe("advanceBlankWatch", () => {
     state: ReturnType<typeof startBlankWatch>,
     observation: "inconclusive" | "blank" | "painted",
     now: number,
-  ) => advanceBlankWatch(state, observation, now, 5_000, 12, 3);
+  ) =>
+    advanceBlankWatch(
+      state,
+      observation,
+      now,
+      BLANK_ATTEMPTS,
+      BLANK_STRIKES,
+    );
 
-  it("stops an inconclusive run at the deadline without failing", () => {
-    const initial = startBlankWatch(0, 5_000);
-    expect(step(initial, "inconclusive", 4_999).action).toBe("retry");
-    expect(step(initial, "inconclusive", 5_000).action).toBe("stop");
+  it("fails an inconclusive run at the 800ms deadline so a silent black board cannot persist", () => {
+    const initial = startBlankWatch(0, BLANK_WATCH_MS);
+    expect(step(initial, "inconclusive", BLANK_WATCH_MS - 1).action).toBe(
+      "retry",
+    );
+    const timedOut = step(initial, "inconclusive", BLANK_WATCH_MS);
+    expect(timedOut.action).toBe("fail");
+    expect(timedOut.state.phase).toBe("stopped");
   });
 
   it("fails after three conclusive blanks following an inconclusive run", () => {
-    let transition = step(startBlankWatch(0, 5_000), "inconclusive", 4_000);
-    transition = step(transition.state, "blank", 4_500);
-    transition = step(transition.state, "blank", 5_000);
-    transition = step(transition.state, "blank", 5_500);
+    let transition = step(startBlankWatch(0, BLANK_WATCH_MS), "inconclusive", 400);
+    transition = step(transition.state, "blank", 450);
+    transition = step(transition.state, "blank", 500);
+    transition = step(transition.state, "blank", 550);
+    expect(transition.action).toBe("fail");
+  });
+
+  it("preserves the mount deadline after blank samples", () => {
+    let transition = step(startBlankWatch(0, BLANK_WATCH_MS), "blank", 799);
+    expect(transition.state.deadline).toBe(BLANK_WATCH_MS);
+    transition = step(transition.state, "blank", BLANK_WATCH_MS);
     expect(transition.action).toBe("fail");
   });
 
   it("stops when a conclusive read finds painted pixels", () => {
-    const transition = step(startBlankWatch(0, 5_000), "painted", 1_000);
+    const transition = step(startBlankWatch(0, BLANK_WATCH_MS), "painted", 100);
     expect(transition.action).toBe("stop");
     expect(transition.state.phase).toBe("stopped");
   });
 
   it("preserves blank strikes across inconclusive frames", () => {
-    let transition = step(startBlankWatch(0, 5_000), "blank", 1_000);
-    transition = step(transition.state, "inconclusive", 2_000);
+    let transition = step(startBlankWatch(0, BLANK_WATCH_MS), "blank", 100);
+    transition = step(transition.state, "inconclusive", 200);
     expect(transition.state.blankStrikes).toBe(1);
-    transition = step(transition.state, "blank", 3_000);
-    transition = step(transition.state, "inconclusive", 4_000);
-    transition = step(transition.state, "blank", 5_000);
+    transition = step(transition.state, "blank", 300);
+    transition = step(transition.state, "inconclusive", 400);
+    transition = step(transition.state, "blank", 500);
     expect(transition.action).toBe("fail");
   });
 });

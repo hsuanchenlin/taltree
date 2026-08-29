@@ -42,6 +42,24 @@ export interface BlankWatchTransition {
   action: BlankWatchAction;
 }
 
+/**
+ * How long the host waits for a confirmed paint before failing the slab so
+ * the classic tree can take over. Long enough for a couple of real frames,
+ * short enough that a silent black board cannot sit there.
+ */
+export const BLANK_WATCH_MS = 800;
+/**
+ * Consecutive blank readings before the slab is declared a lost cause. One
+ * could be a frame caught mid-present; three across three frames could not.
+ */
+export const BLANK_STRIKES = 3;
+/**
+ * How many conclusive looks before giving up on ever deciding. A board that
+ * never offers a probe point is handled by the watch window instead: at the
+ * deadline an unpainted board fails closed.
+ */
+export const BLANK_ATTEMPTS = 12;
+
 export function startBlankWatch(now: number, watchMs: number): BlankWatchState {
   return {
     phase: "waiting",
@@ -55,7 +73,6 @@ export function advanceBlankWatch(
   state: BlankWatchState,
   observation: BlankWatchObservation,
   now: number,
-  watchMs: number,
   maxConclusiveAttempts: number,
   blankStrikeLimit: number,
 ): BlankWatchTransition {
@@ -63,16 +80,18 @@ export function advanceBlankWatch(
   if (observation === "painted") {
     return { state: { ...state, phase: "stopped" }, action: "stop" };
   }
+  if (now >= state.deadline) {
+    return { state: { ...state, phase: "stopped" }, action: "fail" };
+  }
   if (observation === "inconclusive") {
-    if (now < state.deadline) return { state, action: "retry" };
-    return { state: { ...state, phase: "stopped" }, action: "stop" };
+    return { state, action: "retry" };
   }
 
   const next: BlankWatchState = {
     phase: "probing",
     blankStrikes: state.blankStrikes + 1,
     conclusiveAttempts: state.conclusiveAttempts + 1,
-    deadline: now + watchMs,
+    deadline: state.deadline,
   };
   if (next.blankStrikes >= blankStrikeLimit) {
     return { state: { ...next, phase: "stopped" }, action: "fail" };
