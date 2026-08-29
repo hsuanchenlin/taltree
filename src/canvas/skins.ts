@@ -1,6 +1,8 @@
-import { FillGradient, Graphics, Rectangle, Texture } from "pixi.js";
+import { Graphics, Rectangle, Texture } from "pixi.js";
 import type { Renderer } from "pixi.js";
+import { recordDiagnosticEvent } from "../diagnostics/errorLog";
 import type { NodeKind } from "../domain/types";
+import { compositeAlphas, mixColor, radialRadii } from "./radialFill";
 
 /**
  * Procedural relic-slab skins. All socket art is baked once into textures at
@@ -18,6 +20,8 @@ export interface RelicSkins {
 const SIZE = 128;
 const CENTER = SIZE / 2;
 const RIM_RADIUS = 56;
+/** Radius of the soft glow disc, in the same 128px art space as the sockets. */
+const GLOW_RADIUS = 60;
 /** Outer edge of the rim stroke: the radius every sprite size is quoted at. */
 const ART_RADIUS = RIM_RADIUS + 4;
 /** The completed skin's outer halo reaches furthest, so every skin bakes here. */
@@ -55,14 +59,52 @@ const COLORS = {
   cyan: 0x59e0f2,
 } as const;
 
-function radial(inner: number, outer: number): FillGradient {
-  return new FillGradient({
-    type: "radial",
-    colorStops: [
-      { offset: 0, color: inner },
-      { offset: 1, color: outer },
-    ],
-  });
+/**
+ * A radial fill drawn as a stack of plain opaque circles instead of a
+ * `FillGradient`. A gradient fill makes Pixi bake a canvas 2D gradient into a
+ * texture of its own and draw the shape through a local-space UV transform: an
+ * extra texture upload and shader path, per skin, on contexts where that path
+ * is exactly what fails silently and leaves the socket blank. Stacked circles
+ * use nothing but the flat fills the rest of the skin already draws, and bake
+ * without a DOM canvas, so every skin is unit-testable in the node environment.
+ */
+function fillRadial(
+  g: Graphics,
+  radius: number,
+  inner: number,
+  outer: number,
+): void {
+  const radii = radialRadii(radius);
+  for (let i = 0; i < radii.length; i += 1) {
+    const t = i / (radii.length - 1);
+    g.circle(CENTER, CENTER, radii[i]!).fill(mixColor(outer, inner, t));
+  }
+}
+
+/**
+ * The soft white glow, drawn the same way but fading to transparent. Alpha
+ * compounds where circles overlap, so each circle carries the alpha that lifts
+ * the accumulated coverage to the falloff the glow wants at that radius.
+ */
+function fillGlow(g: Graphics, radius: number): void {
+  const radii = radialRadii(radius);
+  const targets = radii.map((r) => glowAlphaAt(r / radius));
+  const alphas = compositeAlphas(targets);
+  for (let i = 0; i < radii.length; i += 1) {
+    if (alphas[i]! <= 0) continue;
+    g.circle(CENTER, CENTER, radii[i]!).fill({
+      color: 0xffffff,
+      alpha: alphas[i]!,
+    });
+  }
+}
+
+/** Opacity the glow wants at a normalised radius: 1 at the core, 0 at the rim. */
+function glowAlphaAt(u: number): number {
+  const knee = 0.55;
+  if (u >= 1) return 0;
+  if (u <= knee) return 1 + (0.45 - 1) * (u / knee);
+  return 0.45 * (1 - (u - knee) / (1 - knee));
 }
 
 /** Deterministic tiny PRNG so granite speckles bake identically every launch. */
@@ -89,21 +131,33 @@ function speckle(g: Graphics, seed: number): void {
   }
 }
 
+/**
+ * Bake one skin into a texture. `generateTexture` is the one step here that
+ * needs a working renderer, and a renderer that cannot honour it must not take
+ * the whole board down with it: the failure is recorded for diagnostics and the
+ * sprite falls back to a plain white square. A visibly wrong socket beats a
+ * board that paints nothing and says nothing about why.
+ */
 function bake(renderer: Renderer, draw: (g: Graphics) => void): Texture {
   const g = new Graphics();
-  draw(g);
-  const texture = renderer.generateTexture({
-    target: g,
-    resolution: 2,
-    frame: new Rectangle(
-      CENTER - FRAME_RADIUS,
-      CENTER - FRAME_RADIUS,
-      FRAME_RADIUS * 2,
-      FRAME_RADIUS * 2,
-    ),
-  });
-  g.destroy();
-  return texture;
+  try {
+    draw(g);
+    return renderer.generateTexture({
+      target: g,
+      resolution: 2,
+      frame: new Rectangle(
+        CENTER - FRAME_RADIUS,
+        CENTER - FRAME_RADIUS,
+        FRAME_RADIUS * 2,
+        FRAME_RADIUS * 2,
+      ),
+    });
+  } catch (error) {
+    recordDiagnosticEvent("skins.bake", error);
+    return Texture.WHITE;
+  } finally {
+    g.destroy();
+  }
 }
 
 /** Exported so its subpaths can be asserted on without a renderer. */
@@ -127,10 +181,8 @@ export function drawBlocked(g: Graphics): void {
   g.roundRect(CENTER - 13, CENTER - 4, 26, 20, 4).fill(COLORS.lockGlyph);
 }
 
-function drawEligible(g: Graphics): void {
-  g.circle(CENTER, CENTER, RIM_RADIUS - 4).fill(
-    radial(COLORS.gemBright, COLORS.gemDeep),
-  );
+export function drawEligible(g: Graphics): void {
+  fillRadial(g, RIM_RADIUS - 4, COLORS.gemBright, COLORS.gemDeep);
   g.circle(CENTER, CENTER, RIM_RADIUS).stroke({ width: 8, color: COLORS.gold });
   g.circle(CENTER, CENTER, RIM_RADIUS - 5).stroke({
     width: 1.5,
@@ -150,10 +202,8 @@ function drawEligible(g: Graphics): void {
     .fill(COLORS.parchment);
 }
 
-function drawCompleted(g: Graphics): void {
-  g.circle(CENTER, CENTER, RIM_RADIUS - 4).fill(
-    radial(COLORS.moltenBright, COLORS.moltenDeep),
-  );
+export function drawCompleted(g: Graphics): void {
+  fillRadial(g, RIM_RADIUS - 4, COLORS.moltenBright, COLORS.moltenDeep);
   g.circle(CENTER, CENTER, RIM_RADIUS).stroke({ width: 7, color: COLORS.radiant });
   g.circle(CENTER, CENTER, RIM_RADIUS + 5).stroke({
     width: 2,
@@ -172,10 +222,8 @@ function drawCompleted(g: Graphics): void {
     });
 }
 
-function drawDeferred(g: Graphics): void {
-  g.circle(CENTER, CENTER, RIM_RADIUS - 4).fill(
-    radial(COLORS.moonBright, COLORS.moonDeep),
-  );
+export function drawDeferred(g: Graphics): void {
+  fillRadial(g, RIM_RADIUS - 4, COLORS.moonBright, COLORS.moonDeep);
   g.circle(CENTER, CENTER, RIM_RADIUS).stroke({ width: 8, color: COLORS.pewter });
   // Pause bars glyph.
   g.roundRect(CENTER - 13, CENTER - 15, 9, 30, 2).fill(COLORS.bars);
@@ -194,18 +242,7 @@ export function bakeRelicSkins(renderer: Renderer): RelicSkins {
       completed: bake(renderer, drawCompleted),
       deferred: bake(renderer, drawDeferred),
     },
-    glow: bake(renderer, (g) => {
-      g.circle(CENTER, CENTER, 60).fill(
-        new FillGradient({
-          type: "radial",
-          colorStops: [
-            { offset: 0, color: "#ffffff" },
-            { offset: 0.55, color: "rgba(255,255,255,0.45)" },
-            { offset: 1, color: "rgba(255,255,255,0)" },
-          ],
-        }),
-      );
-    }),
+    glow: bake(renderer, (g) => fillGlow(g, GLOW_RADIUS)),
     halo: bake(renderer, (g) => {
       g.circle(CENTER, CENTER, 58).stroke({ width: 5, color: COLORS.cyan });
     }),
@@ -213,7 +250,16 @@ export function bakeRelicSkins(renderer: Renderer): RelicSkins {
 }
 
 export function destroyRelicSkins(skins: RelicSkins): void {
-  for (const texture of Object.values(skins.sockets)) texture.destroy(true);
-  skins.glow.destroy(true);
-  skins.halo.destroy(true);
+  for (const texture of Object.values(skins.sockets)) release(texture);
+  release(skins.glow);
+  release(skins.halo);
+}
+
+/**
+ * A baked skin owns its texture and frees it; the shared `Texture.WHITE` a
+ * failed bake falls back to is Pixi's own and outlives every world.
+ */
+function release(texture: Texture): void {
+  if (texture === Texture.WHITE) return;
+  texture.destroy(true);
 }

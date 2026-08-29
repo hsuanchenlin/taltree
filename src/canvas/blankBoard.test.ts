@@ -1,0 +1,154 @@
+import { describe, expect, it } from "vitest";
+import type { Camera, LaidOutNode } from "../graph";
+import {
+  BLANK_PROBE_LIMIT,
+  advanceBlankWatch,
+  classifyBlankSample,
+  socketProbePoints,
+  startBlankWatch,
+} from "./blankBoard";
+import { socketCenter } from "./relicGeometry";
+
+function makeNode(overrides: Partial<LaidOutNode> = {}): LaidOutNode {
+  return {
+    id: "a",
+    title: "Node A",
+    cost: 2,
+    kind: "eligible",
+    originalIndex: 0,
+    exceedsBudget: false,
+    waitingOn: [],
+    selected: false,
+    unlocksIfCompleted: false,
+    caption: null,
+    captionTone: null,
+    x: 100,
+    y: 50,
+    width: 200,
+    height: 124,
+    ...overrides,
+  };
+}
+
+const IDENTITY: Camera = { x: 0, y: 0, k: 1 };
+const BOARD = { width: 800, height: 600 };
+const CLEAR = { r: 0x0c, g: 0x10, b: 0x16 };
+
+/** One opaque RGBA pixel repeated, the shape `readPixels` hands back. */
+function block(r: number, g: number, b: number, count = 4, alpha = 255): number[] {
+  return Array.from({ length: count }, () => [r, g, b, alpha]).flat();
+}
+
+describe("socketProbePoints", () => {
+  it("puts each socket where the camera maps it", () => {
+    const node = makeNode();
+    const [point] = socketProbePoints([node], { x: 30, y: -20, k: 2 }, BOARD);
+    const center = socketCenter(node);
+    expect(point).toEqual({ x: center.x * 2 + 30, y: center.y * 2 - 20 });
+  });
+
+  it("prefers the sockets nearest the middle of the board", () => {
+    const nodes = [
+      makeNode({ id: "far", x: 0, y: 0 }),
+      makeNode({ id: "near", x: 300, y: 250 }),
+    ];
+    const points = socketProbePoints(nodes, IDENTITY, BOARD, 1);
+    expect(points).toHaveLength(1);
+    expect(points[0]!.x).toBe(socketCenter(nodes[1]!).x);
+  });
+
+  it("returns at most the requested number of points", () => {
+    const nodes = Array.from({ length: 8 }, (_, i) =>
+      makeNode({ id: `n${i}`, x: 100 + i * 40, y: 100 }),
+    );
+    expect(socketProbePoints(nodes, IDENTITY, BOARD)).toHaveLength(
+      BLANK_PROBE_LIMIT,
+    );
+  });
+
+  it("skips sockets that hang over the edge of the board", () => {
+    // Its centre is on the board, but the sample block would straddle the rim.
+    const node = makeNode({ x: -190, y: 100 });
+    expect(socketProbePoints([node], IDENTITY, BOARD)).toEqual([]);
+  });
+
+  it("declines to probe when zoom shrinks the sockets below a safe sample", () => {
+    expect(socketProbePoints([makeNode()], { x: 0, y: 0, k: 0.1 }, BOARD)).toEqual(
+      [],
+    );
+  });
+
+  it("declines to probe a board with no measured size", () => {
+    expect(
+      socketProbePoints([makeNode()], IDENTITY, { width: 0, height: 0 }),
+    ).toEqual([]);
+  });
+});
+
+describe("classifyBlankSample", () => {
+  it("calls a block of nothing but the clear colour blank", () => {
+    expect(classifyBlankSample(block(0x0c, 0x10, 0x16), CLEAR)).toBe("blank");
+  });
+
+  it("allows a channel or two of slack for a colour-managed swap chain", () => {
+    expect(classifyBlankSample(block(0x0e, 0x0d, 0x1a), CLEAR)).toBe("blank");
+  });
+
+  it("calls a block painted once any pixel carries socket art", () => {
+    const pixels = [...block(0x0c, 0x10, 0x16, 3), ...block(0x46, 0xc7, 0x8f, 1)];
+    expect(classifyBlankSample(pixels, CLEAR)).toBe("painted");
+  });
+
+  it("calls a fully transparent read inconclusive", () => {
+    expect(classifyBlankSample(block(0, 0, 0, 4, 0), CLEAR)).toBe(
+      "inconclusive",
+    );
+  });
+
+  it("prefers painted pixels over transparent pixels in a mixed block", () => {
+    const pixels = [...block(0, 0, 0, 1, 0), ...block(0x46, 0xc7, 0x8f, 1)];
+    expect(classifyBlankSample(pixels, CLEAR)).toBe("painted");
+  });
+
+  it("calls an empty read inconclusive", () => {
+    expect(classifyBlankSample([], CLEAR)).toBe("inconclusive");
+  });
+});
+
+describe("advanceBlankWatch", () => {
+  const step = (
+    state: ReturnType<typeof startBlankWatch>,
+    observation: "inconclusive" | "blank" | "painted",
+    now: number,
+  ) => advanceBlankWatch(state, observation, now, 5_000, 12, 3);
+
+  it("stops an inconclusive run at the deadline without failing", () => {
+    const initial = startBlankWatch(0, 5_000);
+    expect(step(initial, "inconclusive", 4_999).action).toBe("retry");
+    expect(step(initial, "inconclusive", 5_000).action).toBe("stop");
+  });
+
+  it("fails after three conclusive blanks following an inconclusive run", () => {
+    let transition = step(startBlankWatch(0, 5_000), "inconclusive", 4_000);
+    transition = step(transition.state, "blank", 4_500);
+    transition = step(transition.state, "blank", 5_000);
+    transition = step(transition.state, "blank", 5_500);
+    expect(transition.action).toBe("fail");
+  });
+
+  it("stops when a conclusive read finds painted pixels", () => {
+    const transition = step(startBlankWatch(0, 5_000), "painted", 1_000);
+    expect(transition.action).toBe("stop");
+    expect(transition.state.phase).toBe("stopped");
+  });
+
+  it("preserves blank strikes across inconclusive frames", () => {
+    let transition = step(startBlankWatch(0, 5_000), "blank", 1_000);
+    transition = step(transition.state, "inconclusive", 2_000);
+    expect(transition.state.blankStrikes).toBe(1);
+    transition = step(transition.state, "blank", 3_000);
+    transition = step(transition.state, "inconclusive", 4_000);
+    transition = step(transition.state, "blank", 5_000);
+    expect(transition.action).toBe("fail");
+  });
+});

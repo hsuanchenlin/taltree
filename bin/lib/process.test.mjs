@@ -461,6 +461,20 @@ describe("reclaimPort against real processes", () => {
     });
   }
 
+  /**
+   * Wait for a signalled process to actually be gone. `reclaimPort` judges its
+   * own success by the port, which a dev server releases while it is still
+   * shutting down - so the process outlives the call it takes to end it, and
+   * asserting on it the instant the call returns is a race, not a check.
+   */
+  async function waitForExit(pid, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    while (isProcessAlive(pid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return !isProcessAlive(pid);
+  }
+
   /** The orphan: a dev server whose launcher is gone, still holding its port. */
   async function spawnOrphan({ ignoreSigterm = false } = {}) {
     const script = writeFakeVite({ ignoreSigterm });
@@ -503,7 +517,7 @@ describe("reclaimPort against real processes", () => {
     expect(result).toEqual({ outcome: "reclaimed", pid });
     expect(await isPortFree(port)).toBe(true);
     expect(existsSync(path)).toBe(false);
-    expect(isProcessAlive(pid)).toBe(false);
+    expect(await waitForExit(pid)).toBe(true);
   });
 
   it("escalates to SIGKILL when the orphan ignores SIGTERM", async () => {
