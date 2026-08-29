@@ -63,13 +63,13 @@ function isGradient(style: unknown): boolean {
 }
 
 describe.each(Object.entries(SKINS))("the %s socket skin", (_name, draw) => {
-  it("draws something to bake", () => {
+  it("draws something", () => {
     const g = contextOf(draw);
     expect(g.context.instructions.length).toBeGreaterThan(0);
     g.destroy();
   });
 
-  it("keeps every vertex inside the baked frame", () => {
+  it("keeps every vertex inside the shared frame", () => {
     const g = contextOf(draw);
     const strays = polygonVertices(g).filter(
       (p) =>
@@ -84,7 +84,7 @@ describe.each(Object.entries(SKINS))("the %s socket skin", (_name, draw) => {
     g.destroy();
   });
 
-  it("bakes without a gradient, so no DOM canvas stands between art and texture", () => {
+  it("draws without a gradient, so no DOM canvas stands between art and screen", () => {
     const g = contextOf(draw);
     const styles: unknown[] = g.context.instructions
       .filter((instruction) => instruction.action === "fill")
