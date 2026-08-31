@@ -1,10 +1,32 @@
 # Taltree
 
-A local-first web planner for an overloaded day. You set a daily point budget, spend it on a directed talent tree, and see what each choice unlocks.
+A local-first planner for an overloaded day. You set a daily point budget, spend it on a directed talent tree, and see what each choice unlocks.
 
 Unused budget expires at the next calendar day. Unfinished work stays. Missed days are not punished. There is no account, cloud, or AI.
 
-## Setup
+Taltree comes in two builds that share the same rules:
+
+- **Terminal** - a single Rust binary that draws the tree in character cells and is driven entirely from the keyboard, over a `tree.yaml` you own. See [`tui/README.md`](tui/README.md).
+- **Web** - the browser build described below, over a plan stored in `localStorage`.
+
+The terminal build reads and writes the same document, and imports a `tree.json` exported from the web build unchanged.
+
+## Terminal build
+
+Requires a stable Rust toolchain.
+
+```bash
+cd tui
+cargo run                 # opens ./tree.yaml, or seeds a starter plan
+cargo install --path .    # puts `taltree` on your PATH
+```
+
+The terminal binary and the web development launcher below both install the
+name `taltree`; install only the one you want that command to run.
+
+`hjkl` moves along the conduits, `c` completes, `d` defers, `a` adds, `r` links a prerequisite, `/` searches, `v` swaps to the list, and `?` shows every key. Full usage, the file format, and the socket glyphs are in [`tui/README.md`](tui/README.md).
+
+## Web build: setup
 
 Requires Node 20+.
 
@@ -25,7 +47,7 @@ npm run preview   # serve the production build locally
 
 The app runs entirely in the browser. It does not start a backend and does not send plan data anywhere.
 
-## Global CLI
+## Web development launcher CLI
 
 Install once from this checkout to get the `taltree` command everywhere:
 

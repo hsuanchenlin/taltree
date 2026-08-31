@@ -4,6 +4,21 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 ## Commands
 
+Two builds share this repository and are checked separately in CI.
+
+Terminal application (Rust, in [`tui/`](tui/)):
+
+```bash
+cd tui
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo fmt
+cargo run                              # opens ./tree.yaml
+cargo run --example board_preview 96   # print the demo board as text
+```
+
+Web application (TypeScript, at the repository root):
+
 ```bash
 npm install
 npm run dev
@@ -13,9 +28,19 @@ npm run lint
 npm run build
 ```
 
-Open the app at the Vite URL printed by `npm run dev` (default `http://localhost:5173`).
+Open the web app at the Vite URL printed by `npm run dev` (default `http://localhost:5173`).
 
-## Architecture
+## Architecture: terminal application (`tui/`)
+
+- The same rules as the web build, ported and owned separately: [`tui/src/domain/plan.rs`](tui/src/domain/plan.rs) holds eligibility, cycle rejection, budget, unlock/block explanations, completion, defer, and rollover, and every command takes a plan by reference and returns a new one so a refused command cannot half-change the document. The UI reads `inspect` and applies results; it never re-derives a rule. Nothing in the crate asks the calendar directly - every rule takes a `&dyn Clock` ([`clock.rs`](tui/src/domain/clock.rs)), which is how a test walks a plan past midnight.
+- The person-owned document is `tree.yaml` ([`tui/src/persist/`](tui/src/persist/)): serde field names are the camelCase spelling the web build's JSON already uses, so a `tree.json` imports unchanged and a `.json` path stays JSON. [`validate.rs`](tui/src/persist/validate.rs) runs on every load because the file is hand-editable. Sharp edge: dates are compared as strings everywhere, so `validate` rewrites a hand-written `2026-8-31` to `2026-08-31` - without that, a deferral would silently never match today. Saves go through a temporary file renamed into place ([`store.rs`](tui/src/persist/store.rs)).
+- The board is built as data, not painted: [`tui/src/graph/layout.rs`](tui/src/graph/layout.rs) is a layered (Sugiyama) layout in cell coordinates, [`conduit.rs`](tui/src/graph/conduit.rs) merges direction bits into box-drawing glyphs, and [`board.rs`](tui/src/graph/board.rs) composes conduits and node chips into a grid of `(char, Ink)` the renderer only has to colour. That is what lets layout and drawing be asserted as text.
+- Sharp edge - two axes, two rules: an edge spanning more than one rank gets dummy slots so its conduit has reserved space instead of running through whatever node is in the way, and `settle` places a rank by isotonic regression rather than greedy left-packing. Packing greedily shoves a pair of prerequisites to one side of the dependent they share, and the next sweep chases them, so the layout never converges. Separately, `j`/`k` pick the nearest *rank* and `h`/`l` the nearest node on the *same row* ([`navigate.rs`](tui/src/graph/navigate.rs)): one weighting for both axes makes `l` jump to the parent above.
+- Sharp edge - cell width is not character count: a double-width character claims two terminal columns, so [`board.rs`](tui/src/graph/board.rs) writes a `CONTINUATION` marker into the second cell and `to_lines` drops it. Without that a CJK title silently shifts every chip on its row.
+- Keys are a pure function of mode and key event ([`tui/src/ui/keys.rs`](tui/src/ui/keys.rs)) producing an `Action` that [`app.rs`](tui/src/ui/app.rs) applies, so the whole keyboard is testable without a terminal. Modes and the shared text input live in [`mode.rs`](tui/src/ui/mode.rs). [`render.rs`](tui/src/ui/render.rs) is only geometry and colour.
+- Tests: unit tests sit beside their module; [`tui/tests/session.rs`](tui/tests/session.rs) drives key sequences and reads the plan back off disk, and [`tui/tests/screen.rs`](tui/tests/screen.rs) renders into ratatui's `TestBackend` and asserts the screen as text. A change that works on screen but never reaches the file fails the first; a truncated panel fails the second.
+
+## Architecture: web application (repository root)
 
 - Domain rules live in [`src/domain/plan.ts`](src/domain/plan.ts). Eligibility, cycle rejection, budget, unlock/block explanations, completion, defer, and rollover must stay there. The UI reads `inspect` and applies command results; it must not reimplement those rules.
 - Talent-tree projection, layered layout, spatial neighbor lookup, and camera math (fit, zoom-about-a-point, keep-selection-visible, momentum/friction, smooth-zoom and focus lerping) live in [`src/graph/`](src/graph/). The tree UI reads `buildTalentTree`; it must not re-derive kinds or unlocks, and it must not reimplement camera geometry inline.
@@ -28,13 +53,13 @@ Open the app at the Vite URL printed by `npm run dev` (default `http://localhost
 - The global `taltree` CLI (launch dev server + open browser; `taltree update` fast-forwards the checkout and reinstalls dependencies) lives in [`bin/taltree.mjs`](bin/taltree.mjs), plain ESM JavaScript so it runs without a build step. Pure parsing/port/status helpers in [`bin/lib/`](bin/lib/) carry the vitest tests (`bin/**/*.test.mjs`, included via `vite.config.ts`); keep CLI rules in those helpers, not inline in the entry. Sharp edge: `isPortFree` must probe both loopbacks and both wildcards (IPv4 plus IPv6-only) - BSD-style stacks let a wildcard bind coexist with a loopback-only listener on the same port, so probing `0.0.0.0` alone misses `127.0.0.1`-only squatters.
 - Launcher process lifecycle is [`bin/lib/process.mjs`](bin/lib/process.mjs): a per-port pidfile under `.taltree/` records the launcher and its Vite child, and `reclaimPort` frees a port still held by an orphan of this installation. Two rules keep it from killing the wrong thing, and both are load-bearing: the *server* is identified by a command line that is under the install root **and** named like vite/taltree (the root alone matches `postgres -D <root>/data`), and stale-vs-live is decided by *parentage* - a server whose parent is still its recorded launcher is in use, one reparented to init is the orphan. Never identify the launcher by its command line: it is invoked by a relative path or through a global shim outside the root.
 - Domain language: [`CONTEXT.md`](CONTEXT.md). Local-first decision: [`docs/adr/0001-local-first-json.md`](docs/adr/0001-local-first-json.md).
-- Setup and usage: [`README.md`](README.md). The talent tree is the primary workspace; keep the list/detail view as the accessible keyboard-operable alternative.
+- Setup and usage: [`README.md`](README.md) and [`tui/README.md`](tui/README.md). In both builds the talent tree is the primary workspace; keep the list view as the accessible keyboard-operable alternative.
 
 ## Product constraints (do not regress)
 
 - No accounts, telemetry, cloud backend, AI, streaks, XP, avatars, or punishment for missed days.
 - Unused daily budget expires; unfinished work rolls forward; defer is for the current local calendar day only.
-- Reject directed cycles with a path explanation. Keep a list/detail UI; do not replace it with a canvas-only graph.
+- Reject directed cycles with a path explanation. Keep a list/detail UI in both builds; do not replace it with a graph-only view.
 - Never upload plan data.
 
 ## Maintaining this file
