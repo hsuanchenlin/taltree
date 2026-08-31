@@ -3,6 +3,9 @@ node_modules
 dist
 *.local
 
+# Rust build output for the terminal application
+tui/target
+
 # Launcher runtime state (dev-server pidfiles)
 .taltree
 
