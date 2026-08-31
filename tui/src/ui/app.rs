@@ -4,7 +4,7 @@
 //! answer. It never re-implements a rule: eligibility, cycles, budget, and
 //! rollover all come back from [`crate::domain::plan`].
 
-use crate::domain::clock::Clock;
+use crate::domain::clock::{day_has_changed, Clock};
 use crate::domain::plan::{
     complete_node, defer_node, delete_node, edit_node, explain_choice, inspect, remaining_budget,
     set_daily_budget, set_title, toggle_prerequisite, undefer_node,
@@ -153,6 +153,10 @@ impl App {
 
     pub fn plan(&self) -> &Plan {
         &self.plan
+    }
+
+    pub fn day_has_changed(&self) -> bool {
+        day_has_changed(self.clock.as_ref(), &self.plan.active_date)
     }
 
     pub fn view(&self) -> &PlanView {
@@ -338,13 +342,16 @@ impl App {
                 self.mode = Mode::Normal;
                 self.status = Status::info("Left alone.");
             }
-            Action::Save => self.save(true),
+            Action::Save => {
+                self.save(true);
+            }
         }
     }
 
     fn quit(&mut self) {
-        self.save(false);
-        self.should_quit = true;
+        if self.save(false) {
+            self.should_quit = true;
+        }
     }
 
     fn scroll_help(&mut self, delta: i32) {
@@ -887,11 +894,14 @@ impl App {
         };
         match name {
             "" => {}
-            "w" | "write" | "save" => self.save(true),
+            "w" | "write" | "save" => {
+                self.save(true);
+            }
             "q" | "quit" => self.quit(),
             "wq" | "x" => {
-                self.save(true);
-                self.should_quit = true;
+                if self.save(true) {
+                    self.should_quit = true;
+                }
             }
             "add" | "a" => self.begin_add(Some(rest.to_string())),
             "edit" | "e" => self.begin_edit(Some(rest.to_string())),
@@ -990,14 +1000,18 @@ impl App {
         self.save(false);
     }
 
-    fn save(&mut self, announce: bool) {
+    fn save(&mut self, announce: bool) -> bool {
         match self.store.save(&self.plan) {
             Ok(()) => {
                 if announce {
                     self.status = Status::good(format!("Saved to {}.", self.store.location()));
                 }
+                true
             }
-            Err(message) => self.status = Status::error(message),
+            Err(message) => {
+                self.status = Status::error(message);
+                false
+            }
         }
     }
 }

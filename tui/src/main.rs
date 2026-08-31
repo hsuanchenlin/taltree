@@ -3,6 +3,7 @@
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use crossterm::event::{self, Event};
 use crossterm::execute;
@@ -142,13 +143,17 @@ fn install_panic_hook() {
 fn run(terminal: &mut Terminal<Backend>, app: &mut App) -> io::Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| render::draw(frame, app))?;
-        match event::read()? {
-            Event::Key(key) => {
-                let action = keys::map(&app.mode, key);
-                app.apply(action);
+        if event::poll(Duration::from_secs(1))? {
+            match event::read()? {
+                Event::Key(key) => {
+                    let action = keys::map(&app.mode, key);
+                    app.apply(action);
+                }
+                Event::Resize(_, _) => {}
+                _ => {}
             }
-            Event::Resize(_, _) => {}
-            _ => {}
+        } else if app.day_has_changed() {
+            app.refresh();
         }
     }
     Ok(())

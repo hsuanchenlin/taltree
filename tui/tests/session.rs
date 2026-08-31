@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use taltree::domain::clock::{Clock, FrozenClock};
 use taltree::domain::plan::empty_plan;
 use taltree::domain::types::{NodeKind, Plan, PlanNode};
-use taltree::persist::store::{load, FileStore, Loaded};
+use taltree::persist::store::{load, FileStore, Loaded, MemoryStore};
 use taltree::persist::yaml::from_yaml;
 use taltree::ui::app::{App, Tone, ViewMode};
 use taltree::ui::keys;
@@ -480,6 +480,28 @@ fn quitting_saves_first() {
     session.select("walk").press('c').press('q');
     assert!(session.app.should_quit);
     assert_eq!(session.saved().spent_today, 1);
+}
+
+#[test]
+fn a_failed_save_keeps_the_application_open() {
+    let store = MemoryStore {
+        fail_with: Some("The plan could not be saved.".to_string()),
+        ..MemoryStore::default()
+    };
+    let mut app = App::new(
+        chain_plan(),
+        Box::new(FrozenClock::new(TODAY)),
+        Box::new(store),
+    );
+
+    app.apply(keys::map(
+        &app.mode,
+        KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+    ));
+
+    assert!(!app.should_quit);
+    assert_eq!(app.status.tone, Tone::Error);
+    assert_eq!(app.status.message, "The plan could not be saved.");
 }
 
 #[test]

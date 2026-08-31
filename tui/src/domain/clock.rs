@@ -34,6 +34,11 @@ impl Clock for FrozenClock {
     }
 }
 
+/// A plan needs synchronization when its recorded day no longer matches the clock.
+pub fn day_has_changed(clock: &dyn Clock, active_date: &str) -> bool {
+    clock.today() != active_date
+}
+
 /// A real calendar day rewritten as zero-padded `YYYY-MM-DD`, or `None`.
 ///
 /// Dates are compared as strings everywhere else, so a hand-written `2026-8-31`
@@ -59,6 +64,13 @@ mod tests {
         let clock = FrozenClock::new("2026-08-31");
         assert_eq!(clock.today(), "2026-08-31");
         assert_eq!(clock.today(), "2026-08-31");
+    }
+
+    #[test]
+    fn day_change_compares_the_plan_day_with_the_clock() {
+        let clock = FrozenClock::new("2026-09-01");
+        assert!(day_has_changed(&clock, "2026-08-31"));
+        assert!(!day_has_changed(&clock, "2026-09-01"));
     }
 
     #[test]
