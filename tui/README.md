@@ -23,8 +23,8 @@ starts at `./tree.yaml`:
 2. `$XDG_CONFIG_HOME/taltree/tree.yaml` (or `~/.config/taltree/tree.yaml`)
 
 A `.json` path is read and written as JSON, so a plan exported from the web
-build opens unchanged. A `tree.json` sitting beside a missing `tree.yaml` is
-imported on open, and the first save writes the YAML.
+build opens unchanged. When a YAML path is requested explicitly but is missing,
+a sibling `.json` file is imported and the first save writes the requested YAML.
 
 | Option | |
 | --- | --- |

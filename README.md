@@ -21,6 +21,9 @@ cargo run                 # opens ./tree.yaml, or seeds a starter plan
 cargo install --path .    # puts `taltree` on your PATH
 ```
 
+The terminal binary and the web development launcher below both install the
+name `taltree`; install only the one you want that command to run.
+
 `hjkl` moves along the conduits, `c` completes, `d` defers, `a` adds, `r` links a prerequisite, `/` searches, `v` swaps to the list, and `?` shows every key. Full usage, the file format, and the socket glyphs are in [`tui/README.md`](tui/README.md).
 
 ## Web build: setup
@@ -44,7 +47,7 @@ npm run preview   # serve the production build locally
 
 The app runs entirely in the browser. It does not start a backend and does not send plan data anywhere.
 
-## Global CLI
+## Web development launcher CLI
 
 Install once from this checkout to get the `taltree` command everywhere:
 
