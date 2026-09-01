@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// taltree CLI: `taltree` launches the dev server and opens the browser;
-// `taltree update` fast-forwards this checkout and reinstalls dependencies.
+// taltree CLI: `taltree` runs the native terminal application; `taltree --web` starts the
+// browser build's dev server and opens it; `taltree update` fast-forwards this checkout
+// and rebuilds both.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, helpText, CliError } from "./lib/cli.mjs";
 import { SERVER_HOST, isPortFree, findFreePort, isPortInUseError, spawnDevServer, openBrowser } from "./lib/server.mjs";
 import { reclaimPort, createPidfileHandle } from "./lib/process.mjs";
+import { runTui, TuiError } from "./lib/tui.mjs";
 import { update, UpdateError } from "./lib/update.mjs";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -17,7 +19,7 @@ function fail(message, code = 1) {
   process.exit(code);
 }
 
-async function launch({ port, portExplicit, open }) {
+async function launchWeb({ port, portExplicit, open }) {
   const viteBin = join(packageRoot, "node_modules", ".bin", "vite");
   if (!existsSync(viteBin)) {
     fail(`dependencies are not installed; run \`npm install\` in ${packageRoot}`);
@@ -150,7 +152,23 @@ async function main() {
     return;
   }
 
-  await launch(opts);
+  if (opts.command === "web") {
+    await launchWeb(opts);
+    return;
+  }
+
+  try {
+    // The terminal application owns stdin, stdout, and the exit code from here on.
+    process.exit(await runTui({ root: packageRoot, args: opts.tuiArgs }));
+  } catch (err) {
+    if (err instanceof TuiError) fail(err.message);
+    throw err;
+  }
 }
 
-main();
+main().catch((err) => {
+  // Nothing above is expected to reject; a stack trace here beats a bare
+  // unhandled-rejection warning with no exit code to act on.
+  console.error(err);
+  process.exit(1);
+});

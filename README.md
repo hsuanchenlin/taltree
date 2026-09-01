@@ -18,11 +18,11 @@ Requires a stable Rust toolchain.
 ```bash
 cd tui
 cargo run                 # opens ./tree.yaml, or seeds a starter plan
-cargo install --path .    # puts `taltree` on your PATH
+cargo install --path .    # puts the internal `taltree-tui` binary on your PATH
 ```
 
-The terminal binary and the web development launcher below both install the
-name `taltree`; install only the one you want that command to run.
+The npm launcher described below provides the public `taltree` command and runs
+this internal binary, building it on first use.
 
 `hjkl` moves along the conduits, `c` completes, `d` defers, `a` adds, `r` links a prerequisite, `/` searches, `v` swaps to the list, and `?` shows every key. Full usage, the file format, and the socket glyphs are in [`tui/README.md`](tui/README.md).
 
@@ -47,7 +47,7 @@ npm run preview   # serve the production build locally
 
 The app runs entirely in the browser. It does not start a backend and does not send plan data anywhere.
 
-## Web development launcher CLI
+## Launcher CLI
 
 Install once from this checkout to get the `taltree` command everywhere:
 
@@ -58,18 +58,30 @@ npm link        # or: npm install -g .
 `npm link` is recommended: it keeps the command bound to this git checkout, which `taltree update` needs.
 
 ```bash
-taltree                 # start the dev server on a free port (default 5173) and open the browser
-taltree --port 3000     # use a specific port (fails if it is busy)
-taltree --no-open       # start without opening a browser (for headless or scripted use)
-taltree update          # git pull the latest version and reinstall dependencies
+taltree                 # open ./tree.yaml in the terminal application
+taltree plans/next.yaml # open a specific plan
+taltree -e              # start empty instead of seeded with the demo
+taltree -- --help       # the terminal application's own usage
+taltree --web           # run the browser build's dev server and open it instead
+taltree update          # git pull, rebuild and reinstall both builds
 taltree update --check  # report whether an update exists, change nothing
-taltree --help          # usage
+taltree --help          # launcher usage
 ```
 
-Press `q` or `Ctrl-C` to stop the server. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
-The development server binds only to `127.0.0.1`; automatic port selection retries the next free port if another process wins the bind race.
+`taltree` runs the native terminal application, handing it the terminal directly so raw mode, keys, and colour behave exactly as they do under `cargo run`. The first launch compiles the release binary (a Rust toolchain is required); later launches start it straight away. The launcher claims only the arguments listed above and passes everything else - and everything after `--` - to the application unchanged, so its own options and plan paths need no escaping unless they collide with one of those.
 
-If a previous run was killed outright (a closed terminal, a crashed shell) its dev server survives and keeps holding the port. `taltree` heals that on the next launch: it reads the pidfile it wrote under `.taltree/`, and when the process still holding the port is that orphaned server it stops it and takes the port back, reporting `taltree: reclaimed port 5173 from previous instance (pid 1234)`. Nothing else is ever signalled - a running `taltree` you started elsewhere, or any unrelated program on the port, is left alone. With automatic port selection the launcher moves to the next free port instead; an occupied explicit `--port` still fails.
+`taltree update` fast-forwards this checkout, then rebuilds the terminal application, reinstalls it as `taltree-tui` with `cargo install --path tui --bin taltree-tui --force`, and reinstalls the browser build's dependencies. The distinct native name keeps the public `taltree` command bound to the launcher. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
+
+### `taltree --web`
+
+```bash
+taltree --web --port 3000   # use a specific port (fails if it is busy)
+taltree --web --no-open     # start without opening a browser (for headless or scripted use)
+```
+
+Press `q` or `Ctrl-C` to stop the server. The development server binds only to `127.0.0.1`; automatic port selection retries the next free port if another process wins the bind race.
+
+If a previous run was killed outright (a closed terminal, a crashed shell) its dev server survives and keeps holding the port. `taltree --web` heals that on the next launch: it reads the pidfile it wrote under `.taltree/`, and when the process still holding the port is that orphaned server it stops it and takes the port back, reporting `taltree: reclaimed port 5173 from previous instance (pid 1234)`. Nothing else is ever signalled - a running server you started elsewhere, or any unrelated program on the port, is left alone. With automatic port selection the launcher moves to the next free port instead; an occupied explicit `--port` still fails.
 
 ## Usage
 
