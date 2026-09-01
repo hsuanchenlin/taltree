@@ -101,7 +101,7 @@ export async function update({ root, check = false, out = (m) => console.log(m),
     );
   }
 
-  out("Installing the terminal application (cargo install --path tui)...");
+  out("Installing the terminal application as taltree-tui (cargo install --path tui)...");
   try {
     await run("cargo", installArgs(root), root);
   } catch (error) {

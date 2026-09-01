@@ -7,13 +7,13 @@ rules, drawn in character cells and driven from the keyboard.
 cd tui
 cargo run                      # opens ./tree.yaml, or seeds a starter plan
 cargo run -- ~/plans/week.yaml
-cargo install --path .         # puts `taltree` on your PATH
+cargo install --path .         # installs the internal `taltree-tui` binary
 ```
 
 ## Opening a plan
 
 ```
-taltree [OPTIONS] [PATH]
+taltree-tui [OPTIONS] [PATH]
 ```
 
 With no `PATH` the first of these that exists wins, and when none does the plan

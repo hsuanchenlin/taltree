@@ -18,11 +18,11 @@ Requires a stable Rust toolchain.
 ```bash
 cd tui
 cargo run                 # opens ./tree.yaml, or seeds a starter plan
-cargo install --path .    # puts `taltree` on your PATH
+cargo install --path .    # puts the internal `taltree-tui` binary on your PATH
 ```
 
-Either installation route gives the same `taltree` command: the npm launcher
-described below runs this binary too, building it on first use.
+The npm launcher described below provides the public `taltree` command and runs
+this internal binary, building it on first use.
 
 `hjkl` moves along the conduits, `c` completes, `d` defers, `a` adds, `r` links a prerequisite, `/` searches, `v` swaps to the list, and `?` shows every key. Full usage, the file format, and the socket glyphs are in [`tui/README.md`](tui/README.md).
 
@@ -70,7 +70,7 @@ taltree --help          # launcher usage
 
 `taltree` runs the native terminal application, handing it the terminal directly so raw mode, keys, and colour behave exactly as they do under `cargo run`. The first launch compiles the release binary (a Rust toolchain is required); later launches start it straight away. The launcher claims only the arguments listed above and passes everything else - and everything after `--` - to the application unchanged, so its own options and plan paths need no escaping unless they collide with one of those.
 
-`taltree update` fast-forwards this checkout, then rebuilds the terminal application, reinstalls it with `cargo install --path tui --force`, and reinstalls the browser build's dependencies. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
+`taltree update` fast-forwards this checkout, then rebuilds the terminal application, reinstalls it as `taltree-tui` with `cargo install --path tui --bin taltree-tui --force`, and reinstalls the browser build's dependencies. The distinct native name keeps the public `taltree` command bound to the launcher. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
 
 ### `taltree --web`
 

@@ -11,6 +11,8 @@ import { join } from "node:path";
 
 export class TuiError extends Error {}
 
+export const NATIVE_BINARY_NAME = "taltree-tui";
+
 /** Directory of the Rust crate inside an install root. */
 export function cratePath(root) {
   return join(root, "tui");
@@ -23,7 +25,8 @@ export function manifestPath(root) {
 
 /** The compiled release binary. Windows names it with an `.exe` suffix. */
 export function binaryPath(root, platform = process.platform) {
-  return join(cratePath(root), "target", "release", platform === "win32" ? "taltree.exe" : "taltree");
+  const executable = platform === "win32" ? `${NATIVE_BINARY_NAME}.exe` : NATIVE_BINARY_NAME;
+  return join(cratePath(root), "target", "release", executable);
 }
 
 /** Arguments that build the release binary `binaryPath` names. */
@@ -38,7 +41,7 @@ export function buildArgs(root) {
  * old binary in cargo's bin directory and quietly undo the update.
  */
 export function installArgs(root) {
-  return ["install", "--path", cratePath(root), "--force"];
+  return ["install", "--path", cratePath(root), "--bin", NATIVE_BINARY_NAME, "--force"];
 }
 
 /** What to say when `cargo` itself is missing; `action` completes "cargo is needed to ...". */

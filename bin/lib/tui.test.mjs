@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { binaryPath, buildArgs, installArgs, manifestPath, cratePath, runTui, TuiError } from "./tui.mjs";
 
 const ROOT = "/install/taltree";
-const BINARY = join(ROOT, "tui", "target", "release", "taltree");
+const BINARY = join(ROOT, "tui", "target", "release", "taltree-tui");
 
 describe("paths and cargo arguments", () => {
   it("points at the crate's release binary", () => {
     expect(binaryPath(ROOT, "darwin")).toBe(BINARY);
     expect(binaryPath(ROOT, "linux")).toBe(BINARY);
-    expect(binaryPath(ROOT, "win32")).toBe(join(ROOT, "tui", "target", "release", "taltree.exe"));
+    expect(binaryPath(ROOT, "win32")).toBe(join(ROOT, "tui", "target", "release", "taltree-tui.exe"));
   });
 
   it("builds the binary the launcher then runs", () => {
@@ -19,7 +19,14 @@ describe("paths and cargo arguments", () => {
   it("installs from the crate directory, forcing over an existing binary", () => {
     // Without --force cargo skips an install whose version already matches, which
     // would leave an out-of-date binary on the PATH after an update.
-    expect(installArgs(ROOT)).toEqual(["install", "--path", cratePath(ROOT), "--force"]);
+    expect(installArgs(ROOT)).toEqual([
+      "install",
+      "--path",
+      cratePath(ROOT),
+      "--bin",
+      "taltree-tui",
+      "--force",
+    ]);
   });
 });
 
