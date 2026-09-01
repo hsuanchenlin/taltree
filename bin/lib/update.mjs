@@ -1,8 +1,10 @@
-// `taltree update`: fetch origin, report status, fast-forward pull, reinstall dependencies.
+// `taltree update`: fetch origin, report status, fast-forward pull, then rebuild both
+// builds - the terminal application `taltree` runs, and the browser build behind --web.
 // Never mutates working-tree state before a fetch succeeds; pull is --ff-only.
 
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { buildArgs, installArgs, cargoMissingMessage } from "./tui.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +23,11 @@ function runVisible(cmd, args, cwd) {
   });
 }
 
+/** True when a failed run means the program itself was not on the PATH. */
+function notInstalled(error) {
+  return error?.code === "ENOENT";
+}
+
 /** Pure status line; unit-tested in update.test.mjs. */
 export function describeStatus({ ahead, behind, current, incoming }) {
   if (behind === 0) {
@@ -35,7 +42,7 @@ export function describeStatus({ ahead, behind, current, incoming }) {
  * Update the checkout at `root`. With `check`, only reports. Returns { updated, ahead, behind }.
  * Throws UpdateError with a user-facing message on any failure.
  */
-export async function update({ root, check = false, out = (m) => console.log(m) }) {
+export async function update({ root, check = false, out = (m) => console.log(m), run = runVisible }) {
   try {
     await git(root, ["rev-parse", "--is-inside-work-tree"]);
   } catch {
@@ -81,14 +88,38 @@ export async function update({ root, check = false, out = (m) => console.log(m) 
     out(`Pulled: ${after}`);
   }
 
-  out("Installing dependencies (npm install)...");
+  // The terminal application comes first: it is what `taltree` runs, so a failure here
+  // must be reported before the browser build's dependencies are touched.
+  out("Building the terminal application (cargo build --release)...");
   try {
-    await runVisible("npm", ["install"], root);
+    await run("cargo", buildArgs(root), root);
+  } catch (error) {
+    throw new UpdateError(
+      notInstalled(error)
+        ? cargoMissingMessage("build the terminal application")
+        : "cargo build --release failed; the repository is updated but the terminal application was not rebuilt.",
+    );
+  }
+
+  out("Installing the terminal application (cargo install --path tui)...");
+  try {
+    await run("cargo", installArgs(root), root);
+  } catch (error) {
+    throw new UpdateError(
+      notInstalled(error)
+        ? cargoMissingMessage("install the terminal application")
+        : "cargo install --path tui failed; the binary in tui/target/release is current, but cargo's bin directory was not updated.",
+    );
+  }
+
+  out("Installing browser-build dependencies (npm install)...");
+  try {
+    await run("npm", ["install"], root);
   } catch {
     throw new UpdateError("npm install failed; retry taltree update.");
   }
 
   if (behind > 0) out(`Updated: ${before} -> ${after}`);
-  else out(`Dependencies installed; repository remains at ${current}.`);
+  else out(`Rebuilt and reinstalled; repository remains at ${current}.`);
   return { updated: behind > 0, ahead, behind };
 }
