@@ -1,3 +1,4 @@
+import { parseNotes } from "../domain/notes";
 import type { ChoiceExplanation, NodeListing } from "../domain/types";
 import { pointsLabel } from "./format";
 import { KindMark } from "./glyphs";
@@ -48,6 +49,7 @@ export function NodeDetail({
   const canComplete = explanation.eligible;
   const canDefer = node.status === "open" && kind !== "deferred";
   const canUndefer = kind === "deferred";
+  const { body: notesBody, links: resourceLinks } = parseNotes(node.notes);
 
   return (
     <aside className={paneClass} aria-label="Node detail">
@@ -130,6 +132,29 @@ export function NodeDetail({
 
       {node.prerequisiteIds.length > 0 && explanation.waitingOn.length === 0 ? (
         <p className="quiet">All hard prerequisites for this node are completed.</p>
+      ) : null}
+
+      {resourceLinks.length > 0 ? (
+        <section>
+          <h3>Resources</h3>
+          <ul className="resource-links">
+            {resourceLinks.map((link) => (
+              <li key={`${link.type}:${link.url}`}>
+                <span className="resource-type">{link.type}</span>
+                <a href={link.url} target="_blank" rel="noreferrer noopener">
+                  {link.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {notesBody ? (
+        <section>
+          <h3>Notes</h3>
+          <p className="notes-body">{notesBody}</p>
+        </section>
       ) : null}
 
       <div className="detail-actions">

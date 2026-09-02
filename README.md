@@ -93,7 +93,7 @@ The **talent tree** is the main workspace: a dark relic slab of circular rune so
 2. Select a node on the tree. The strip above the board states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
 3. The detail pane repeats **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this**.
 4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
-5. **New node** / **Edit** set title, cost, and hard prerequisites. Directed cycles are rejected with the loop named.
+5. **New node** / **Edit** set title, cost, hard prerequisites, and free-text notes. Directed cycles are rejected with the loop named.
 
 Drag anywhere on the board to pan; a quick release continues with momentum. Scroll or pinch to smoothly zoom around the pointer or touch midpoint, and use `+` / `-` / `0` to zoom and fit. Double-click or double-tap a node to center it. Arrows move to a nearby node on the tree. `f` centers the selected node, and `v` toggles the list. Camera motion stops immediately when reduced motion is preferred.
 
@@ -131,6 +131,8 @@ The plan is a version 1 JSON document stored in this browser under `localStorage
 ```
 
 `deferredOn` is the local `YYYY-MM-DD` the node was deferred. After that day it is eligible again if its prerequisites are done. Changing `activeDate` in the file is unnecessary: opening the app on a new day resets `spentToday` and expires leftover budget.
+
+A node may also carry a free-text `notes` field. Typed resource links live in those notes, not in a separate schema: a line `- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)` is shown as an `article` tag and a title link. Types are `official`, `opensource`, `article`, `course`, `podcast`, `video`, `book`, and `feed`. Keep at most eight, and keep the ones most relevant today rather than the biggest list. Content is keyed by node id, so renaming a title does not lose it.
 
 If a saved plan cannot be read, Taltree loads the demo instead but keeps the unreadable data on this device under `localStorage` key `taltree.plan.v1.broken` and offers **Download the unreadable file**, so nothing is lost. Importing a plan or loading the demo from the toolbar clears that backup.
 

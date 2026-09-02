@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
+use crate::domain::notes::parse_optional_notes;
 use crate::domain::types::NodeKind;
 use crate::graph::board::{Board, Ink, CONTINUATION};
 use crate::graph::camera::{Camera, Viewport};
@@ -296,12 +297,46 @@ fn inspector_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         .collect();
     lines.extend(section("Unlocks", &unlocks, "nothing yet", width));
 
-    if let Some(notes) = &listing.node.notes {
+    let parsed = parse_optional_notes(listing.node.notes.as_deref());
+    if !parsed.links.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Resources",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        for link in &parsed.links {
+            let label = format!("[{}] {}", link.kind.as_str(), link.title);
+            for (index, text) in wrap(&label, width.saturating_sub(4))
+                .into_iter()
+                .enumerate()
+            {
+                let prefix = if index == 0 { "  " } else { "    " };
+                lines.push(Line::from(vec![
+                    Span::raw(prefix.to_string()),
+                    Span::styled(
+                        text,
+                        if index == 0 {
+                            Style::default().add_modifier(Modifier::UNDERLINED)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                ]));
+            }
+            for text in wrap(&link.url, width.saturating_sub(4)) {
+                lines.push(Line::from(Span::styled(
+                    format!("    {text}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
+        lines.push(Line::from(""));
+    }
+    if !parsed.body.is_empty() {
         lines.push(Line::from(Span::styled(
             "Notes",
             Style::default().add_modifier(Modifier::BOLD),
         )));
-        for text in wrap(notes, width) {
+        for text in wrap(&parsed.body, width) {
             lines.push(Line::from(text));
         }
     }

@@ -14,7 +14,7 @@ import {
   syncDay,
   undeferNode,
 } from "./plan";
-import type { Clock, Plan, PlanError, Result } from "./types";
+import type { Clock, NodeInput, Plan, PlanError, Result } from "./types";
 
 const TODAY = "2026-08-27";
 const TOMORROW = "2026-08-28";
@@ -273,6 +273,45 @@ describe("defer", () => {
   });
 });
 
+describe("notes", () => {
+  it("starts a new node with empty notes", () => {
+    const plan = add(emptyPlan(today), today, { title: "Triage inbox", cost: 1 });
+    expect(byTitle(plan, "Triage inbox").notes).toBeNull();
+  });
+
+  it("stores notes and keeps them through complete and an unrelated edit", () => {
+    let plan = add(emptyPlan(today), today, {
+      title: "Find receipts",
+      cost: 2,
+      notes:
+        "Shoebox in the hall.\n- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)",
+    });
+    const id = byTitle(plan, "Find receipts").id;
+    expect(byTitle(plan, "Find receipts").notes).toContain("The Internet");
+
+    plan = unwrap(editNode(plan, id, { title: "Find last year's receipts" }, today));
+    expect(byTitle(plan, "Find last year's receipts").notes).toContain(
+      "The Internet",
+    );
+
+    plan = complete(plan, today, "Find last year's receipts");
+    expect(byTitle(plan, "Find last year's receipts").notes).toContain(
+      "The Internet",
+    );
+  });
+
+  it("clears notes when patched with a blank string", () => {
+    let plan = add(emptyPlan(today), today, {
+      title: "Take a walk",
+      cost: 1,
+      notes: "Around the block",
+    });
+    const id = byTitle(plan, "Take a walk").id;
+    plan = unwrap(editNode(plan, id, { notes: "   " }, today));
+    expect(byTitle(plan, "Take a walk").notes).toBeNull();
+  });
+});
+
 describe("rollover", () => {
   it("keeps unfinished work after a missed day", () => {
     let plan = proposalChain(today);
@@ -310,11 +349,7 @@ describe("rollover", () => {
   });
 });
 
-function add(
-  plan: Plan,
-  clock: Clock,
-  input: { title: string; cost: number; prerequisiteIds?: string[] },
-): Plan {
+function add(plan: Plan, clock: Clock, input: NodeInput): Plan {
   return unwrap(createNode(plan, input, clock));
 }
 

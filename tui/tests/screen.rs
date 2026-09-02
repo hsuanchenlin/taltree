@@ -27,14 +27,6 @@ fn plan() -> Plan {
     plan
 }
 
-fn app() -> App {
-    App::new(
-        plan(),
-        Box::new(FrozenClock::new(TODAY)),
-        Box::new(MemoryStore::default()),
-    )
-}
-
 struct Screen {
     terminal: Terminal<TestBackend>,
     app: App,
@@ -42,9 +34,17 @@ struct Screen {
 
 impl Screen {
     fn new(width: u16, height: u16) -> Self {
+        Self::with_plan(plan(), width, height)
+    }
+
+    fn with_plan(plan: Plan, width: u16, height: u16) -> Self {
         Screen {
             terminal: Terminal::new(TestBackend::new(width, height)).expect("terminal"),
-            app: app(),
+            app: App::new(
+                plan,
+                Box::new(FrozenClock::new(TODAY)),
+                Box::new(MemoryStore::default()),
+            ),
         }
     }
 
@@ -145,6 +145,23 @@ fn a_long_entry_in_the_inspector_wraps_with_a_hanging_indent() {
         "{:?}",
         lines[unlocks + 1]
     );
+}
+
+#[test]
+fn the_inspector_shows_typed_resource_links_from_notes() {
+    let mut plan = plan();
+    plan.nodes[2].notes = Some(
+        "Shoebox in the hall.\n- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)"
+            .to_string(),
+    );
+    let mut screen = Screen::with_plan(plan, 100, 24);
+    screen.app.selected = Some("walk".to_string());
+    let text = screen.text();
+    assert!(text.contains("Resources"), "{text}");
+    assert!(text.contains("[article]"), "{text}");
+    assert!(text.contains("The Internet"), "{text}");
+    assert!(text.contains("Notes"), "{text}");
+    assert!(text.contains("Shoebox"), "{text}");
 }
 
 #[test]

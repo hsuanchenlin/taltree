@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { cycleIfAdded } from "../domain/plan";
-import type { Plan, PlanNode } from "../domain/types";
+import type { NodeInput, Plan, PlanNode } from "../domain/types";
 
 interface NodeFormDialogProps {
   open: boolean;
@@ -9,11 +9,7 @@ interface NodeFormDialogProps {
   node: PlanNode | null;
   error: string | null;
   onClose: () => void;
-  onSubmit: (input: {
-    title: string;
-    cost: number;
-    prerequisiteIds: string[];
-  }) => boolean;
+  onSubmit: (input: NodeInput) => boolean;
 }
 
 export function NodeFormDialog({
@@ -30,6 +26,7 @@ export function NodeFormDialog({
   const [title, setTitle] = useState("");
   const [cost, setCost] = useState(1);
   const [prerequisiteIds, setPrerequisiteIds] = useState<string[]>([]);
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -43,6 +40,7 @@ export function NodeFormDialog({
     setTitle(node?.title ?? "");
     setCost(node?.cost ?? 1);
     setPrerequisiteIds(node?.prerequisiteIds ?? []);
+    setNotes(node?.notes ?? "");
   }, [open, node]);
 
   const candidates = plan.nodes.filter((item) => item.id !== node?.id);
@@ -59,7 +57,7 @@ export function NodeFormDialog({
         method="dialog"
         onSubmit={(event) => {
           event.preventDefault();
-          const saved = onSubmit({ title, cost, prerequisiteIds });
+          const saved = onSubmit({ title, cost, prerequisiteIds, notes });
           if (saved) onClose();
         }}
       >
@@ -83,6 +81,16 @@ export function NodeFormDialog({
             step={1}
             value={cost}
             onChange={(event) => setCost(Number.parseInt(event.target.value, 10) || 0)}
+          />
+        </label>
+        <label>
+          Notes
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={5}
+            spellCheck
+            placeholder="- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)"
           />
         </label>
         <fieldset>

@@ -46,5 +46,6 @@ function node(
     deferredOn: null,
     completedOn: null,
     prerequisiteIds,
+    notes: null,
   };
 }

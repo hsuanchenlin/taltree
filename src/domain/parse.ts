@@ -118,6 +118,8 @@ function parseNode(data: unknown): Result<PlanNode> {
     }
     if (!prerequisiteIds.includes(id)) prerequisiteIds.push(id);
   }
+  const notes = parseNotesField(data.notes, data.title);
+  if (!notes.ok) return notes;
   return {
     ok: true,
     value: {
@@ -128,8 +130,18 @@ function parseNode(data: unknown): Result<PlanNode> {
       deferredOn: data.deferredOn,
       completedOn: data.completedOn,
       prerequisiteIds,
+      notes: notes.value,
     },
   };
+}
+
+function parseNotesField(value: unknown, title: unknown): Result<string | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== "string") {
+    return fail(`Node "${String(title)}" notes must be a string or null.`);
+  }
+  const trimmed = value.trim();
+  return { ok: true, value: trimmed ? value : null };
 }
 
 function parseStatus(value: unknown): Result<NodeStatus> {

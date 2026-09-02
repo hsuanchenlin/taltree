@@ -45,7 +45,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -702,6 +703,51 @@ button:disabled {
   margin-top: 6px;
 }
 
+.detail ul.resource-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.detail ul.resource-links li + li {
+  margin-top: 0;
+}
+
+.resource-links li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.resource-links a {
+  color: var(--forest);
+}
+
+.resource-links a:hover,
+.resource-links a:focus-visible {
+  color: var(--forest-deep);
+}
+
+.resource-type {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--forest);
+  background: rgba(36, 86, 61, 0.1);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.notes-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -868,10 +914,17 @@ dialog.modal fieldset {
 
 dialog.modal input[type="text"],
 dialog.modal input[type="number"],
-dialog.modal input:not([type="checkbox"]) {
+dialog.modal input:not([type="checkbox"]),
+dialog.modal textarea {
   padding: 7px 8px;
   border: 1px solid var(--rule);
   background: #fff;
+}
+
+dialog.modal textarea {
+  min-height: 6rem;
+  resize: vertical;
+  font: inherit;
 }
 
 .prereq-picks {
