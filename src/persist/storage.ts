@@ -45,7 +45,13 @@ export function clearBrokenBackup(storage: Storage): void {
 }
 
 export function serializePlan(plan: Plan): string {
-  return `${JSON.stringify(plan, null, 2)}\n`;
+  return `${JSON.stringify(plan, omitEmptyNotes, 2)}\n`;
+}
+
+/** Match the TUI: omit `notes` when empty so a browser export stays a plain plan. */
+function omitEmptyNotes(key: string, value: unknown): unknown {
+  if (key === "notes" && (value === null || value === "")) return undefined;
+  return value;
 }
 
 export function parsePlanText(text: string): Result<Plan> {

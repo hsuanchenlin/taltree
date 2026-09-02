@@ -86,6 +86,14 @@ nodes:
   - find-receipts
 ```
 
+A node may also carry a free-text `notes` field. Typed resource links live in
+those notes, not in a separate schema: a line
+`- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)` is shown as
+an `article` tag and a title link. Types are `official`, `opensource`,
+`article`, `course`, `podcast`, `video`, `book`, and `feed`. Keep at most eight,
+and keep the ones most relevant today rather than the biggest list. Content is
+keyed by node id, so renaming a title does not lose it.
+
 Every change saves itself, through a temporary file renamed into place, so an
 interrupted save leaves the previous plan intact. Nothing is uploaded anywhere.
 

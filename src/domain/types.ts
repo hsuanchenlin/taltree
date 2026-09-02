@@ -8,6 +8,8 @@ export interface PlanNode {
   deferredOn: string | null;
   completedOn: string | null;
   prerequisiteIds: string[];
+  /** Free-text annotation. Typed resource links live here, not in a separate field. */
+  notes: string | null;
 }
 
 export interface Plan {
@@ -82,10 +84,13 @@ export interface NodeInput {
   title: string;
   cost: number;
   prerequisiteIds?: string[];
+  notes?: string | null;
 }
 
 export interface NodePatch {
   title?: string;
   cost?: number;
   prerequisiteIds?: string[];
+  /** `undefined` leaves notes alone; `null` or blank clears them. */
+  notes?: string | null;
 }

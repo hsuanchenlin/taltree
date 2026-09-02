@@ -118,6 +118,7 @@ export function createNode(
     deferredOn: null,
     completedOn: null,
     prerequisiteIds: unique(prerequisiteIds),
+    notes: normalizeNotes(input.notes),
   };
   return ok({ ...synced, nodes: [...synced.nodes, node] });
 }
@@ -144,7 +145,12 @@ export function editNode(
   const prereqCheck = validatePrereqs(synced, nodeId, prerequisiteIds);
   if (!prereqCheck.ok) return prereqCheck;
 
-  return ok(replaceNode(synced, { ...node, ...parsed.value, prerequisiteIds }));
+  const notes =
+    patch.notes === undefined ? node.notes : normalizeNotes(patch.notes);
+
+  return ok(
+    replaceNode(synced, { ...node, ...parsed.value, prerequisiteIds, notes }),
+  );
 }
 
 export function completeNode(
@@ -422,6 +428,11 @@ function refOf(node: PlanNode): NamedRef {
 
 function unique(ids: string[]): string[] {
   return [...new Set(ids)];
+}
+
+function normalizeNotes(notes: string | null | undefined): string | null {
+  if (notes === null || notes === undefined) return null;
+  return notes.trim() ? notes : null;
 }
 
 function createNodeId(): string {

@@ -113,6 +113,37 @@ mod tests {
     }
 
     #[test]
+    fn typed_resource_lines_stay_inside_notes() {
+        let plan = from_yaml(
+            "version: 1\n\
+             title: Curriculum\n\
+             dailyBudget: 4\n\
+             activeDate: 2026-08-31\n\
+             spentToday: 0\n\
+             nodes:\n\
+             \x20 - id: internet\n\
+             \x20   title: Read about the internet\n\
+             \x20   cost: 1\n\
+             \x20   status: open\n\
+             \x20   notes: |\n\
+             \x20     Start here.\n\
+             \x20     - [@article@The Internet](https://en.wikipedia.org/wiki/Internet)\n",
+        )
+        .expect("reads");
+        let notes = plan
+            .node("internet")
+            .unwrap()
+            .notes
+            .as_deref()
+            .expect("notes");
+        assert!(
+            notes.contains("- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)"),
+            "{notes}"
+        );
+        assert_eq!(from_yaml(&to_yaml(&plan)).expect("round trip"), plan);
+    }
+
+    #[test]
     fn comments_and_quoting_styles_are_accepted() {
         let plan = from_yaml(
             "# my plan\n\

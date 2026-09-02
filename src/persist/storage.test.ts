@@ -173,6 +173,50 @@ describe("plan document", () => {
     if (!result.ok) expect(result.error.message).toContain("unknown prerequisite");
   });
 
+  it("round-trips node notes so a TUI plan does not lose them in the browser", () => {
+    const original = demoPlan();
+    const first = original.nodes[0];
+    if (!first) throw new Error("demo plan has nodes");
+    first.notes =
+      "Shoebox in the hall cupboard.\n- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)";
+    const serialized = serializePlan(original);
+    expect(serialized).toContain('"notes":');
+    expect(serialized).toContain("The Internet");
+    const parsed = parsePlan(JSON.parse(serialized));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.nodes[0]?.notes).toBe(first.notes);
+      expect(parsed.value).toEqual(original);
+    }
+  });
+
+  it("treats missing notes as null and omits them on save", () => {
+    const base = JSON.parse(serializePlan(demoPlan())) as {
+      nodes: Record<string, unknown>[];
+    };
+    expect(JSON.stringify(base.nodes[0])).not.toContain("notes");
+    const parsed = parsePlanText(JSON.stringify(base));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.nodes[0]?.notes).toBeNull();
+      expect(serializePlan(parsed.value)).not.toContain('"notes"');
+    }
+  });
+
+  it("rejects notes that are not a string", () => {
+    const base = JSON.parse(serializePlan(demoPlan())) as {
+      nodes: Record<string, unknown>[];
+    };
+    const result = parsePlanText(
+      JSON.stringify({
+        ...base,
+        nodes: [{ ...base.nodes[0], notes: ["not a string"] }, ...base.nodes.slice(1)],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("notes");
+  });
+
   it("seeds a frontier with more work than one day's budget", () => {
     const view = inspect(demoPlan(), frozenClock("2026-08-27"));
     expect(view.plan.dailyBudget).toBe(8);
