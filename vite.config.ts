@@ -8,6 +8,6 @@ export default defineConfig({
   plugins: [react(), activePlanPlugin()],
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "bin/**/*.test.mjs"],
+    include: ["src/**/*.test.ts", "bin/**/*.test.mjs", "vite/**/*.test.mjs"],
   },
 });

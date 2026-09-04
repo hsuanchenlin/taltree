@@ -7,6 +7,7 @@
 // to ask, and browser edits stay in that browser's storage exactly as they do today.
 
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { parse } from "yaml";
 import { plansDir, readActivePlan, shortName } from "../bin/lib/plans.mjs";
 
@@ -34,17 +35,22 @@ export function activePlanPlugin() {
 }
 
 /** `{ active: null }`, or the active plan's name, path and parsed document. */
-export function activePlanPayload() {
-  const active = readActivePlan();
-  if (!active) return { active: null, plansDir: plansDir() };
+export function activePlanPayload(env = process.env, home = homedir()) {
+  const active = readActivePlan(env, home);
+  if (!active) return { active: null, plansDir: plansDir(env, home) };
   if (!active.exists) {
-    return { active: null, plansDir: plansDir(), problem: `${active.path} is no longer there` };
+    return { active: null, plansDir: plansDir(env, home), problem: `${active.path} is no longer there` };
   }
-  const text = readFileSync(active.path, "utf8");
-  const plan = active.path.toLowerCase().endsWith(".json") ? JSON.parse(text) : parse(text);
+  let plan = null;
+  try {
+    const text = readFileSync(active.path, "utf8");
+    plan = (active.path.toLowerCase().endsWith(".json") ? JSON.parse(text) : parse(text)) ?? null;
+  } catch {
+    plan = null;
+  }
   return {
     active: { name: shortName(basename(active.path)), path: active.path, plan },
-    plansDir: plansDir(),
+    plansDir: plansDir(env, home),
   };
 }
 

@@ -96,6 +96,17 @@ describe("readActivePlanPayload", () => {
     }
   });
 
+  it("names a plan whose document could not be parsed at all", () => {
+    const report = readActivePlanPayload({
+      active: { name: "frontend", path: "/plans/frontend.yaml", plan: null },
+    });
+    expect(report.kind).toBe("invalid");
+    if (report.kind === "invalid") {
+      expect(report.name).toBe("frontend");
+      expect(report.path).toBe("/plans/frontend.yaml");
+    }
+  });
+
   it("treats anything else as no answer at all", () => {
     expect(readActivePlanPayload("nope")).toEqual({ kind: "unavailable" });
     expect(readActivePlanPayload({ active: { name: "x" } })).toEqual({ kind: "unavailable" });
@@ -119,5 +130,17 @@ describe("fetchActivePlan", () => {
     }) as unknown as typeof fetch;
     expect(await fetchActivePlan(dead)).toEqual({ kind: "unavailable" });
     expect(await fetchActivePlan(answer({}, false))).toEqual({ kind: "unavailable" });
+  });
+
+  it("reports an unreadable document instead of treating a 200 as no server", async () => {
+    const report = await fetchActivePlan(
+      answer({
+        active: { name: "frontend", path: "/plans/frontend.yaml", plan: null },
+      }),
+    );
+    expect(report.kind).toBe("invalid");
+    if (report.kind === "invalid") {
+      expect(report.path).toBe("/plans/frontend.yaml");
+    }
   });
 });
