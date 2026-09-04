@@ -17,7 +17,7 @@ Requires a stable Rust toolchain.
 
 ```bash
 cd tui
-cargo run                 # opens ./tree.yaml, or seeds a starter plan
+cargo run                 # opens the active plan, else ./tree.yaml
 cargo install --path .    # puts the internal `taltree-tui` binary on your PATH
 ```
 
@@ -76,7 +76,7 @@ taltree --help          # launcher usage
 
 ### Plan library
 
-Imported and hand-written plans live in `~/.config/taltree/plans/` (or `$XDG_CONFIG_HOME/taltree/plans`). `taltree plans` lists them. `taltree load <name>` writes a one-line pointer at `~/.config/taltree/active` so both the terminal application and `taltree --web` open that file until you load another or `taltree load --none`.
+Imported and hand-written plans live in `~/.config/taltree/plans/` (or `$XDG_CONFIG_HOME/taltree/plans`). `taltree plans` lists them. `taltree load <name>` writes a one-line pointer at `~/.config/taltree/active`. The terminal application opens that file. `taltree --web` takes it up once when you switch to it, then keeps what you edit in the browser until you load another plan or `taltree load --none`.
 
 `taltree import <slug>` fetches one roadmap from [roadmap.sh](https://roadmap.sh)'s public API onto your machine, converts the drawn boxes into Taltree nodes, and saves `~/.config/taltree/plans/<slug>.yaml`. Only node titles, ids, and the edges the document actually draws are written. roadmap.sh's topic text is all-rights-reserved; Taltree neither ships it nor fetches it. Most of a typical roadmap's ordering is visual rather than an edge, so disconnected nodes arrive as roots for you to wire up. Section labels become optional `group` fields.
 
@@ -105,7 +105,7 @@ The **talent tree** is the main workspace: a dark relic slab of circular rune so
 2. Select a node on the tree. The strip above the board states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
 3. The detail pane repeats **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this**.
 4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
-5. **New node** / **Edit** set title, cost, an optional group, hard prerequisites, and free-text notes. Directed cycles are rejected with the loop named. In the list view, nodes that share a `group` collapse together under that heading.
+5. **New node** / **Edit** set title, cost, an optional group, hard prerequisites, and free-text notes. Directed cycles are rejected with the loop named. In the list view, nodes that share a `group` sit under that heading, which you can collapse.
 
 Drag anywhere on the board to pan; a quick release continues with momentum. Scroll or pinch to smoothly zoom around the pointer or touch midpoint, and use `+` / `-` / `0` to zoom and fit. Double-click or double-tap a node to center it. Arrows move to a nearby node on the tree. `f` centers the selected node, and `v` toggles the list. Camera motion stops immediately when reduced motion is preferred.
 

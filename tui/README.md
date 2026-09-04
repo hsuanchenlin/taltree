@@ -5,7 +5,7 @@ rules, drawn in character cells and driven from the keyboard.
 
 ```bash
 cd tui
-cargo run                      # opens ./tree.yaml, or seeds a starter plan
+cargo run                      # opens the active plan, else ./tree.yaml
 cargo run -- ~/plans/week.yaml
 cargo install --path .         # installs the internal `taltree-tui` binary
 ```

@@ -7,7 +7,7 @@ import type { NodeListing } from "../domain/types";
  * order can carry it, and nothing is reordered - a person who wrote their plan in a
  * deliberate order keeps it, and an imported plan already arrives with each group's
  * nodes together. The same rule runs in the terminal build (`tui/src/ui/rows.rs`), so
- * the two boards read alike.
+ * the two lists read alike.
  *
  * A heading is a row and nothing else: selection walks listings, so a heading can
  * never be selected, completed, or deferred.

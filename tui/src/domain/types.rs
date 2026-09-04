@@ -28,7 +28,7 @@ pub enum NodeStatus {
 pub struct PlanNode {
     pub id: String,
     pub title: String,
-    /// Optional label putting this node in a named section of the board.
+    /// Optional label putting this node in a named section of the list.
     ///
     /// Grouping is presentation, never scheduling: a group has no bearing on
     /// eligibility, budget, or what unlocks what. Sits beside the title rather than

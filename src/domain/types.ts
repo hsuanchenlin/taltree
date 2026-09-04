@@ -4,7 +4,7 @@ export interface PlanNode {
   id: string;
   title: string;
   /**
-   * Optional label putting this node in a named section of the board.
+   * Optional label putting this node in a named section of the list.
    *
    * Grouping is presentation, never scheduling: a group has no bearing on
    * eligibility, budget, or what unlocks what.
