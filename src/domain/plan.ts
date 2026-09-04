@@ -109,6 +109,8 @@ export function createNode(
   const prerequisiteIds = input.prerequisiteIds ?? [];
   const prereqCheck = validatePrereqs(synced, "new-node", prerequisiteIds);
   if (!prereqCheck.ok) return prereqCheck;
+  const group = parseGroup(input.group);
+  if (!group.ok) return group;
 
   const node: PlanNode = {
     id: idFactory(),
@@ -119,6 +121,7 @@ export function createNode(
     completedOn: null,
     prerequisiteIds: unique(prerequisiteIds),
     notes: normalizeNotes(input.notes),
+    group: group.value,
   };
   return ok({ ...synced, nodes: [...synced.nodes, node] });
 }
@@ -147,9 +150,18 @@ export function editNode(
 
   const notes =
     patch.notes === undefined ? node.notes : normalizeNotes(patch.notes);
+  const group =
+    patch.group === undefined ? { ok: true as const, value: node.group } : parseGroup(patch.group);
+  if (!group.ok) return group;
 
   return ok(
-    replaceNode(synced, { ...node, ...parsed.value, prerequisiteIds, notes }),
+    replaceNode(synced, {
+      ...node,
+      ...parsed.value,
+      prerequisiteIds,
+      notes,
+      group: group.value,
+    }),
   );
 }
 
@@ -428,6 +440,20 @@ function refOf(node: PlanNode): NamedRef {
 
 function unique(ids: string[]): string[] {
   return [...new Set(ids)];
+}
+
+function parseGroup(group: string | null | undefined): Result<string | null> {
+  const normalized = normalizeGroup(group);
+  if (normalized !== null && normalized.length > MAX_TITLE) {
+    return fail("invalid", `Node group must be ${MAX_TITLE} characters or fewer.`);
+  }
+  return ok(normalized);
+}
+
+function normalizeGroup(group: string | null | undefined): string | null {
+  if (group === null || group === undefined) return null;
+  const trimmed = group.trim();
+  return trimmed ? trimmed : null;
 }
 
 function normalizeNotes(notes: string | null | undefined): string | null {

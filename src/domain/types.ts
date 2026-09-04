@@ -3,6 +3,13 @@ export type NodeStatus = "open" | "completed";
 export interface PlanNode {
   id: string;
   title: string;
+  /**
+   * Optional label putting this node in a named section of the board.
+   *
+   * Grouping is presentation, never scheduling: a group has no bearing on
+   * eligibility, budget, or what unlocks what.
+   */
+  group: string | null;
   cost: number;
   status: NodeStatus;
   deferredOn: string | null;
@@ -85,6 +92,8 @@ export interface NodeInput {
   cost: number;
   prerequisiteIds?: string[];
   notes?: string | null;
+  /** The group a new node joins; a blank label means none. */
+  group?: string | null;
 }
 
 export interface NodePatch {
@@ -93,4 +102,6 @@ export interface NodePatch {
   prerequisiteIds?: string[];
   /** `undefined` leaves notes alone; `null` or blank clears them. */
   notes?: string | null;
+  /** `undefined` leaves the group alone; `null` or blank clears it. */
+  group?: string | null;
 }

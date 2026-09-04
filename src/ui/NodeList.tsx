@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { NodeKind, NodeListing } from "../domain/types";
 import { pointsLabel } from "./format";
 import { KindMark } from "./glyphs";
+import { groupRows } from "./nodeGroups";
 
 const GROUPS: { kind: NodeKind; title: string; hint: string }[] = [
   {
@@ -32,6 +34,17 @@ interface NodeListProps {
 }
 
 export function NodeList({ listings, selectedId, onSelect }: NodeListProps) {
+  // Collapse is per group name, not per section: a group is one named set of nodes,
+  // so folding it away folds it everywhere it appears. It is view state only - it
+  // never reaches the plan, and it resets with the page.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = (label: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (!next.delete(label)) next.add(label);
+      return next;
+    });
+
   return (
     <div className="lists">
       {GROUPS.map((group) => {
@@ -49,7 +62,28 @@ export function NodeList({ listings, selectedId, onSelect }: NodeListProps) {
               <p className="empty-group">None.</p>
             ) : (
               <ul className="node-rows" aria-labelledby={`group-${group.kind}`}>
-                {items.map((item) => {
+                {groupRows(items).map((row, rowIndex) => {
+                  if (row.kind === "header") {
+                    const shut = collapsed.has(row.label);
+                    return (
+                      <li key={`${group.kind}-header-${rowIndex}`} className="node-group-head">
+                        <button
+                          type="button"
+                          className="node-group-toggle"
+                          aria-expanded={!shut}
+                          onClick={() => toggle(row.label)}
+                        >
+                          <span className="node-group-caret" aria-hidden="true">
+                            {shut ? "▸" : "▾"}
+                          </span>
+                          <span className="node-group-name">{row.label}</span>
+                          <span className="count">{row.count}</span>
+                        </button>
+                      </li>
+                    );
+                  }
+                  if (row.section !== null && collapsed.has(row.section)) return null;
+                  const item = row.listing;
                   const selected = item.node.id === selectedId;
                   const reason =
                     item.kind === "blocked" && item.waitingOn[0]
@@ -58,7 +92,10 @@ export function NodeList({ listings, selectedId, onSelect }: NodeListProps) {
                         ? "Exceeds remaining budget"
                         : null;
                   return (
-                    <li key={item.node.id}>
+                    <li
+                      key={item.node.id}
+                      className={row.section === null ? undefined : "in-group"}
+                    >
                       <button
                         type="button"
                         id={`node-${item.node.id}`}

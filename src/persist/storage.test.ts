@@ -217,6 +217,90 @@ describe("plan document", () => {
     if (!result.ok) expect(result.error.message).toContain("notes");
   });
 
+  it("round-trips a node group so a grouped plan survives the browser", () => {
+    const original = demoPlan();
+    const first = original.nodes[0];
+    if (!first) throw new Error("demo plan has nodes");
+    first.group = "Paperwork";
+    const serialized = serializePlan(original);
+    expect(serialized).toContain('"group": "Paperwork"');
+    const parsed = parsePlan(JSON.parse(serialized));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.value).toEqual(original);
+  });
+
+  it("treats a missing or blank group as none and omits it on save", () => {
+    const base = JSON.parse(serializePlan(demoPlan())) as {
+      nodes: Record<string, unknown>[];
+    };
+    expect(JSON.stringify(base.nodes[0])).not.toContain("group");
+    const parsed = parsePlanText(
+      JSON.stringify({
+        ...base,
+        nodes: [{ ...base.nodes[0], group: "   " }, ...base.nodes.slice(1)],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.nodes[0]?.group).toBeNull();
+      expect(serializePlan(parsed.value)).not.toContain('"group"');
+    }
+  });
+
+  it("rejects a group that is not a string", () => {
+    const base = JSON.parse(serializePlan(demoPlan())) as {
+      nodes: Record<string, unknown>[];
+    };
+    const result = parsePlanText(
+      JSON.stringify({
+        ...base,
+        nodes: [{ ...base.nodes[0], group: 7 }, ...base.nodes.slice(1)],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("group");
+  });
+
+  it("reads a tree.json written by the TUI, which omits its empty fields", () => {
+    // The Rust build skips serialising `deferredOn`, `completedOn` and an empty
+    // `prerequisiteIds`, so a plan exported from the terminal has to read here.
+    const result = parsePlanText(
+      JSON.stringify({
+        version: 1,
+        title: "A full Thursday",
+        dailyBudget: 8,
+        activeDate: "2026-08-31",
+        spentToday: 0,
+        nodes: [
+          { id: "receipts", title: "Find receipts", cost: 2, status: "open" },
+          {
+            id: "tax",
+            title: "File the tax packet",
+            group: "Paperwork",
+            cost: 5,
+            status: "open",
+            prerequisiteIds: ["receipts"],
+          },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.nodes[0]).toEqual({
+        id: "receipts",
+        title: "Find receipts",
+        group: null,
+        cost: 2,
+        status: "open",
+        deferredOn: null,
+        completedOn: null,
+        prerequisiteIds: [],
+        notes: null,
+      });
+      expect(result.value.nodes[1]?.group).toBe("Paperwork");
+    }
+  });
+
   it("seeds a frontier with more work than one day's budget", () => {
     const view = inspect(demoPlan(), frozenClock("2026-08-27"));
     expect(view.plan.dailyBudget).toBe(8);

@@ -1,14 +1,27 @@
 #!/usr/bin/env node
 // taltree CLI: `taltree` runs the native terminal application; `taltree --web` starts the
-// browser build's dev server and opens it; `taltree update` fast-forwards this checkout
-// and rebuilds both.
+// browser build's dev server and opens it; `taltree plans`, `load` and `import` keep the
+// plan library; `taltree update` fast-forwards this checkout and rebuilds both.
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, helpText, CliError } from "./lib/cli.mjs";
+import {
+  clearActivePlan,
+  listPlans,
+  planListingLines,
+  PlanLibraryError,
+  plansDir,
+  readActivePlan,
+  resolvePlanArgument,
+  writeActivePlan,
+} from "./lib/plans.mjs";
+import { toPlanYaml } from "./lib/planYaml.mjs";
+import { convertRoadmap, roadmapUrl, RoadmapError, summaryLines } from "./lib/roadmap.mjs";
 import { SERVER_HOST, isPortFree, findFreePort, isPortInUseError, spawnDevServer, openBrowser } from "./lib/server.mjs";
 import { reclaimPort, createPidfileHandle } from "./lib/process.mjs";
+import { writeAtomically } from "./lib/write.mjs";
 import { runTui, TuiError } from "./lib/tui.mjs";
 import { update, UpdateError } from "./lib/update.mjs";
 
@@ -124,6 +137,84 @@ async function launchWeb({ port, portExplicit, open }) {
   }
 }
 
+/** `taltree plans` - what is in the library, and which one `taltree` opens. */
+function listLibrary() {
+  const directory = plansDir();
+  const active = readActivePlan();
+  if (active && !active.exists) {
+    console.error(`taltree: the active plan ${active.path} is no longer there; \`taltree load --none\` forgets it`);
+  }
+  for (const line of planListingLines(listPlans(directory, { active: active?.path ?? null }), directory)) {
+    console.log(line);
+  }
+}
+
+/** `taltree load <plan>` - point both builds at one plan until told otherwise. */
+function loadPlan({ plan, clear }) {
+  if (clear) {
+    clearActivePlan();
+    console.log("taltree: no active plan. `taltree` opens ./tree.yaml again.");
+    return;
+  }
+  const path = resolvePlanArgument(plan, { directory: plansDir() });
+  writeActivePlan(path);
+  console.log(`taltree: active plan is now ${path}`);
+  console.log("taltree: run `taltree` to open it, or `taltree load --none` to go back to ./tree.yaml.");
+}
+
+/**
+ * `taltree import <slug>` - fetch one roadmap.sh roadmap into the library.
+ *
+ * The fetch is the person's, made on their machine at their request. Only node titles
+ * and the edges the document draws are written; roadmap.sh's topic text is
+ * all-rights-reserved and is neither fetched nor stored.
+ */
+async function importRoadmap({ slug, force, budget }) {
+  const url = roadmapUrl(slug);
+  const directory = plansDir();
+  const path = join(directory, `${slug}.yaml`);
+  if (existsSync(path) && !force) {
+    fail(`${path} already exists; pass --force to replace it`);
+  }
+
+  console.log(`taltree: fetching ${url}`);
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { accept: "application/json", "user-agent": "taltree-import" },
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch (err) {
+    fail(`could not reach roadmap.sh (${err.message}). Check your connection and try again.`);
+  }
+  if (response.status === 404) {
+    fail(`roadmap.sh has no roadmap called "${slug}". The slug is the last part of its URL, as in roadmap.sh/frontend.`);
+  }
+  if (!response.ok) {
+    fail(`roadmap.sh answered ${response.status} ${response.statusText}. Try again in a moment.`);
+  }
+
+  let document;
+  try {
+    document = await response.json();
+  } catch {
+    fail(`roadmap.sh did not answer with a roadmap document for "${slug}".`);
+  }
+
+  const today = new Date().toLocaleDateString("en-CA");
+  const { plan, summary } = convertRoadmap(document, { slug, today, dailyBudget: budget ?? undefined });
+  if (plan.nodes.length === 0) {
+    fail(`that roadmap has no topics to import.`);
+  }
+
+  mkdirSync(directory, { recursive: true });
+  writeAtomically(path, toPlanYaml(plan));
+  console.log("");
+  for (const line of summaryLines(summary, path)) console.log(line);
+  console.log("");
+  console.log(`Run \`taltree load ${slug}\` to make it the plan taltree opens.`);
+}
+
 async function main() {
   let opts;
   try {
@@ -154,6 +245,18 @@ async function main() {
 
   if (opts.command === "web") {
     await launchWeb(opts);
+    return;
+  }
+
+  if (opts.command === "plans" || opts.command === "load" || opts.command === "import") {
+    try {
+      if (opts.command === "plans") listLibrary();
+      else if (opts.command === "load") loadPlan(opts);
+      else await importRoadmap(opts);
+    } catch (err) {
+      if (err instanceof PlanLibraryError || err instanceof RoadmapError) fail(err.message);
+      throw err;
+    }
     return;
   }
 

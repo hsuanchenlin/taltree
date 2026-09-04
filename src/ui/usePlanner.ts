@@ -23,6 +23,13 @@ import type {
   Result,
 } from "../domain/types";
 import {
+  fetchActivePlan,
+  readAdopted,
+  REPLACED_KEY,
+  shouldAdopt,
+  writeAdopted,
+} from "../persist/activePlan";
+import {
   backupBrokenPlan,
   clearBrokenBackup,
   downloadFilename,
@@ -68,6 +75,40 @@ export function usePlanner() {
   );
   const [error, setError] = useState<string | null>(initial.warning);
   const [brokenRaw, setBrokenRaw] = useState<string | null>(initial.raw);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // The plan `taltree load` made active, taken up once per switch. See
+  // `src/persist/activePlan.ts` for why it is once and not on every reload.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const report = await fetchActivePlan();
+      if (cancelled) return;
+      if (report.kind === "invalid") {
+        setError(`The active plan ${report.path} will not load: ${report.message}`);
+        return;
+      }
+      if (report.kind !== "ok") return;
+      const { name, plan: incoming } = report.active;
+      if (!shouldAdopt(readAdopted(localStorage), name)) return;
+      setPlan((current) => {
+        // The browser does not write back to the plan file, so the plan being
+        // replaced is kept on this device rather than dropped.
+        try {
+          localStorage.setItem(REPLACED_KEY, serializePlan(current));
+        } catch {
+          // A browser that refuses storage still gets the plan it asked for.
+        }
+        return inspect(incoming, clock).plan;
+      });
+      writeAdopted(localStorage, name);
+      setSelectedId(inspect(incoming, clock).frontier[0]?.node.id ?? incoming.nodes[0]?.id ?? null);
+      setNotice(`Opened the active plan "${name}". The plan it replaced is kept on this device.`);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clock]);
 
   useEffect(() => {
     const synced = inspect(plan, clock).plan;
@@ -110,6 +151,7 @@ export function usePlanner() {
     selectedId: selected?.node.id ?? null,
     explanation,
     error,
+    notice,
     brokenRaw,
     select: setSelectedId,
     moveSelection(delta: number) {
@@ -222,6 +264,9 @@ export function usePlanner() {
     },
     clearError() {
       setError(null);
+    },
+    clearNotice() {
+      setNotice(null);
     },
   };
 }

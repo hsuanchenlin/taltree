@@ -34,6 +34,7 @@ pub enum Action {
     BeginAdd,
     BeginEdit,
     BeginNotes,
+    BeginGroup,
     BeginLink,
     BeginDelete,
     BeginCommand,
@@ -146,6 +147,7 @@ fn normal(key: KeyEvent) -> Action {
         KeyCode::Char('a') => Action::BeginAdd,
         KeyCode::Char('e') => Action::BeginEdit,
         KeyCode::Char('m') => Action::BeginNotes,
+        KeyCode::Char('M') => Action::BeginGroup,
         KeyCode::Char('r') => Action::BeginLink,
         KeyCode::Char('D') => Action::BeginDelete,
 
@@ -214,6 +216,8 @@ mod tests {
     fn the_editing_keys_are_where_vim_puts_them() {
         assert_eq!(map(&Mode::Normal, press('a')), Action::BeginAdd);
         assert_eq!(map(&Mode::Normal, press('e')), Action::BeginEdit);
+        assert_eq!(map(&Mode::Normal, press('m')), Action::BeginNotes);
+        assert_eq!(map(&Mode::Normal, press('M')), Action::BeginGroup);
         assert_eq!(map(&Mode::Normal, press('r')), Action::BeginLink);
         assert_eq!(map(&Mode::Normal, press('D')), Action::BeginDelete);
         assert_eq!(map(&Mode::Normal, press('d')), Action::Defer);

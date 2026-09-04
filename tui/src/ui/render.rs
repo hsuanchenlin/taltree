@@ -19,6 +19,7 @@ use super::app::{App, Tone, ViewMode};
 use super::format;
 use super::help;
 use super::mode::Mode;
+use super::rows;
 
 /// Below this the inspector would squeeze the board out of usefulness.
 const SIDEBAR_WIDTH: u16 = 34;
@@ -179,17 +180,26 @@ fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
         .as_deref()
         .and_then(|id| view.listings.iter().position(|item| item.node.id == id))
         .unwrap_or(0);
+    // Group headers take rows of their own, so the window has to be measured in rows
+    // rather than in nodes or the selection scrolls off the bottom of a grouped plan.
+    let rows = rows::list_rows(&view.listings);
+    let selected_row = rows::row_of_node(&rows, selected_index).unwrap_or(0);
     let height = inner.height.max(1) as usize;
-    let offset = selected_index.saturating_sub(height.saturating_sub(1) / 2);
-    let offset = offset.min(view.listings.len().saturating_sub(height));
+    let offset = selected_row.saturating_sub(height.saturating_sub(1) / 2);
+    let offset = offset.min(rows.len().saturating_sub(height));
 
-    let lines: Vec<Line<'static>> = view
-        .listings
+    let lines: Vec<Line<'static>> = rows
         .iter()
-        .enumerate()
         .skip(offset)
         .take(height)
-        .map(|(index, listing)| {
+        .map(|row| {
+            let index = match row {
+                rows::ListRow::Header(label) => {
+                    return group_header_line(label, inner.width as usize)
+                }
+                rows::ListRow::Node(index) => *index,
+            };
+            let listing = &view.listings[index];
             let selected = index == selected_index;
             let reason = match listing.kind {
                 NodeKind::Blocked => format!("waiting on {}", format::names(&listing.waiting_on)),
@@ -224,6 +234,18 @@ fn draw_list(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
+/// A group's name, ruled off so the eye reads it as a boundary rather than a node.
+fn group_header_line(label: &str, width: usize) -> Line<'static> {
+    let name = truncate(label, width.saturating_sub(4).max(1));
+    let rule = width.saturating_sub(name.chars().count() + 1);
+    Line::from(Span::styled(
+        format!("{name} {}", "─".repeat(rule)),
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
+    ))
+}
+
 fn draw_inspector(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -253,6 +275,14 @@ fn inspector_lines(app: &App, width: u16) -> Vec<Line<'static>> {
             ))
         })
         .collect();
+    if let Some(group) = listing.node.group_label() {
+        for text in wrap(group, width) {
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(Color::Magenta),
+            )));
+        }
+    }
     lines.extend([Line::from(vec![
         Span::styled(
             format!("{} {}", listing.kind.socket(), listing.kind.label()),

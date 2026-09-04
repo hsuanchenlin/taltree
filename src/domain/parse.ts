@@ -102,17 +102,22 @@ function parseNode(data: unknown): Result<PlanNode> {
   }
   const status = parseStatus(data.status);
   if (!status.ok) return status;
-  if (data.deferredOn !== null && typeof data.deferredOn !== "string") {
+  // The TUI omits an optional field rather than writing `null`, so a `tree.json`
+  // written by that build has to read here as the absent field it is.
+  const deferredOn = data.deferredOn ?? null;
+  const completedOn = data.completedOn ?? null;
+  if (deferredOn !== null && typeof deferredOn !== "string") {
     return fail(`Node "${data.title}" deferredOn must be a date or null.`);
   }
-  if (data.completedOn !== null && typeof data.completedOn !== "string") {
+  if (completedOn !== null && typeof completedOn !== "string") {
     return fail(`Node "${data.title}" completedOn must be a date or null.`);
   }
-  if (!Array.isArray(data.prerequisiteIds)) {
+  const declaredPrereqs = data.prerequisiteIds ?? [];
+  if (!Array.isArray(declaredPrereqs)) {
     return fail(`Node "${data.title}" prerequisiteIds must be an array of ids.`);
   }
   const prerequisiteIds: string[] = [];
-  for (const id of data.prerequisiteIds) {
+  for (const id of declaredPrereqs) {
     if (typeof id !== "string" || !id) {
       return fail(`Node "${data.title}" prerequisiteIds must be an array of ids.`);
     }
@@ -120,19 +125,35 @@ function parseNode(data: unknown): Result<PlanNode> {
   }
   const notes = parseNotesField(data.notes, data.title);
   if (!notes.ok) return notes;
+  const group = parseGroupField(data.group, data.title);
+  if (!group.ok) return group;
   return {
     ok: true,
     value: {
       id: data.id,
       title: data.title.trim(),
+      group: group.value,
       cost: data.cost,
       status: status.value,
-      deferredOn: data.deferredOn,
-      completedOn: data.completedOn,
+      deferredOn,
+      completedOn,
       prerequisiteIds,
       notes: notes.value,
     },
   };
+}
+
+/** A group is a label, not a schema of its own; blank means none. */
+function parseGroupField(value: unknown, title: unknown): Result<string | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== "string") {
+    return fail(`Node "${String(title)}" group must be a string or null.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_TITLE) {
+    return fail(`Node "${String(title)}" group must be ${MAX_TITLE} characters or fewer.`);
+  }
+  return { ok: true, value: trimmed ? trimmed : null };
 }
 
 function parseNotesField(value: unknown, title: unknown): Result<string | null> {

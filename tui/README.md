@@ -19,8 +19,12 @@ taltree-tui [OPTIONS] [PATH]
 With no `PATH` the first of these that exists wins, and when none does the plan
 starts at `./tree.yaml`:
 
-1. `./tree.yaml`, `./tree.yml`, `./tree.json`
-2. `$XDG_CONFIG_HOME/taltree/tree.yaml` (or `~/.config/taltree/tree.yaml`)
+1. The active plan set by `taltree load` (the path in `$XDG_CONFIG_HOME/taltree/active`)
+2. `./tree.yaml`, `./tree.yml`, `./tree.json`
+3. `$XDG_CONFIG_HOME/taltree/tree.yaml` (or `~/.config/taltree/tree.yaml`)
+
+An explicit path on the command line always wins over the active plan. A pointer
+at a file that is no longer there falls through to the ordinary search.
 
 A `.json` path is read and written as JSON, so a plan exported from the web
 build opens unchanged. When a YAML path is requested explicitly but is missing,
@@ -75,6 +79,7 @@ spentToday: 2
 nodes:
 - id: find-receipts
   title: Find last year's receipts
+  group: Paperwork
   cost: 2
   status: completed
   completedOn: 2026-08-31
@@ -86,13 +91,19 @@ nodes:
   - find-receipts
 ```
 
+A node may also carry an optional `group` string, which files it in a named
+section of the list. Group headers are non-interactive separator rows; grouping
+never changes eligibility, budget, or unlocks. Existing plans without `group`
+draw exactly as they did.
+
 A node may also carry a free-text `notes` field. Typed resource links live in
 those notes, not in a separate schema: a line
 `- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)` is shown as
 an `article` tag and a title link. Types are `official`, `opensource`,
 `article`, `course`, `podcast`, `video`, `book`, and `feed`. Keep at most eight,
 and keep the ones most relevant today rather than the biggest list. Content is
-keyed by node id, so renaming a title does not lose it.
+keyed by node id, so renaming a title does not lose it. Press `M` to file the
+selection into a group, or `:group <label>` from the command line.
 
 Every change saves itself, through a temporary file renamed into place, so an
 interrupted save leaves the previous plan intact. Nothing is uploaded anywhere.

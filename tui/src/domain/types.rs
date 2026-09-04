@@ -28,6 +28,14 @@ pub enum NodeStatus {
 pub struct PlanNode {
     pub id: String,
     pub title: String,
+    /// Optional label putting this node in a named section of the board.
+    ///
+    /// Grouping is presentation, never scheduling: a group has no bearing on
+    /// eligibility, budget, or what unlocks what. Sits beside the title rather than
+    /// with the annotations so it stays visible in a hand-edited file whose `notes`
+    /// run long.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     pub cost: u32,
     pub status: NodeStatus,
     /// The local calendar day this node was pushed off the frontier, if any.
@@ -47,6 +55,7 @@ impl PlanNode {
         PlanNode {
             id: id.into(),
             title: title.into(),
+            group: None,
             cost,
             status: NodeStatus::Open,
             deferred_on: None,
@@ -60,6 +69,20 @@ impl PlanNode {
     pub fn requiring(mut self, ids: &[&str]) -> Self {
         self.prerequisite_ids = ids.iter().map(|id| (*id).to_string()).collect();
         self
+    }
+
+    /// The same node filed under a named group.
+    pub fn grouped(mut self, group: impl Into<String>) -> Self {
+        self.group = Some(group.into());
+        self
+    }
+
+    /// The group label, or `None` when the node names one that is only whitespace.
+    pub fn group_label(&self) -> Option<&str> {
+        self.group
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
     }
 
     pub fn is_completed(&self) -> bool {
@@ -257,6 +280,8 @@ pub struct NodeInput {
     pub title: String,
     pub cost: u32,
     pub prerequisite_ids: Vec<String>,
+    /// The group a new node joins; a blank label means none.
+    pub group: Option<String>,
 }
 
 /// The fields an edit may change; `None` leaves the field alone.
@@ -266,4 +291,6 @@ pub struct NodePatch {
     pub cost: Option<u32>,
     pub prerequisite_ids: Option<Vec<String>>,
     pub notes: Option<Option<String>>,
+    /// `None` leaves the group alone; `Some(None)` or a blank label clears it.
+    pub group: Option<Option<String>>,
 }

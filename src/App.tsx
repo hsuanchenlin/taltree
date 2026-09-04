@@ -298,6 +298,13 @@ export function App() {
               </>
             ) : null}
           </p>
+        ) : planner.notice ? (
+          <p className="banner notice" role="status">
+            {planner.notice}{" "}
+            <button type="button" className="text-btn" onClick={planner.clearNotice}>
+              Dismiss
+            </button>
+          </p>
         ) : (
           <p className="local-note">
             This plan lives in this browser. Taltree does not send it anywhere.

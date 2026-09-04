@@ -13,8 +13,8 @@ USAGE:
 
 ARGS:
     <PATH>    Plan file to open. A .json path is read and written as JSON;
-              anything else is YAML. Defaults to ./tree.yaml, then
-              ~/.config/taltree/tree.yaml.
+              anything else is YAML. With no path: the active plan set by
+              `taltree load`, else ./tree.yaml, else ~/.config/taltree/tree.yaml.
 
 OPTIONS:
     -e, --empty        Start a new plan empty instead of seeded with a demo
@@ -76,10 +76,14 @@ where
 
 /// Where the plan lives, given what exists on disk.
 ///
-/// An explicit path always wins. Otherwise the first existing candidate is
-/// taken, and when none exists the plan starts at `./tree.yaml`.
+/// An explicit path always wins. The active plan comes next: it is set by an
+/// explicit `taltree load`, so it outranks whatever happens to be in the working
+/// directory, but never outranks a path typed on this command line. After that the
+/// first existing candidate is taken, and when none exists the plan starts at
+/// `./tree.yaml`.
 pub fn resolve_path(
     explicit: Option<&Path>,
+    active: Option<&Path>,
     working_dir: &Path,
     config_dir: Option<&Path>,
     exists: &dyn Fn(&Path) -> bool,
@@ -88,11 +92,17 @@ pub fn resolve_path(
         return path.to_path_buf();
     }
     let default = working_dir.join("tree.yaml");
-    let mut candidates = vec![
+    let mut candidates = Vec::new();
+    // A pointer at a plan that has been moved or deleted falls through to the
+    // ordinary search rather than starting an empty document under its name.
+    if let Some(path) = active {
+        candidates.push(path.to_path_buf());
+    }
+    candidates.extend([
         default.clone(),
         working_dir.join("tree.yml"),
         working_dir.join("tree.json"),
-    ];
+    ]);
     if let Some(config) = config_dir {
         candidates.push(config.join("taltree/tree.yaml"));
         candidates.push(config.join("taltree/tree.yml"));
@@ -101,6 +111,25 @@ pub fn resolve_path(
         .into_iter()
         .find(|candidate| exists(candidate))
         .unwrap_or(default)
+}
+
+/// The plan `taltree load` last pointed at, read from `<config>/taltree/active`.
+///
+/// The pointer is one line holding an absolute path, written by the Node launcher
+/// ([`bin/lib/plans.mjs`](../../../bin/lib/plans.mjs)). A pointer that cannot be read
+/// is no pointer: the plan is the person's, and a permissions problem on a bookmark
+/// is not a reason to refuse to open anything at all.
+pub fn active_plan_path(
+    config_dir: Option<&Path>,
+    read: &dyn Fn(&Path) -> Option<String>,
+) -> Option<PathBuf> {
+    let path = config_dir?.join("taltree/active");
+    let text = read(&path)?;
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
 }
 
 /// `$XDG_CONFIG_HOME`, else `$HOME/.config`.
@@ -160,6 +189,7 @@ mod tests {
     fn an_explicit_path_wins_even_when_nothing_is_there() {
         let path = resolve_path(
             Some(Path::new("/elsewhere/plan.yaml")),
+            None,
             Path::new("/work"),
             Some(Path::new("/home/.config")),
             &present(&["/work/tree.yaml"]),
@@ -170,6 +200,7 @@ mod tests {
     #[test]
     fn the_working_directory_plan_is_preferred_over_the_config_one() {
         let path = resolve_path(
+            None,
             None,
             Path::new("/work"),
             Some(Path::new("/home/.config")),
@@ -182,6 +213,7 @@ mod tests {
     fn a_json_plan_in_the_working_directory_is_found() {
         let path = resolve_path(
             None,
+            None,
             Path::new("/work"),
             None,
             &present(&["/work/tree.json"]),
@@ -192,6 +224,7 @@ mod tests {
     #[test]
     fn the_config_plan_is_found_when_the_working_directory_has_none() {
         let path = resolve_path(
+            None,
             None,
             Path::new("/work"),
             Some(Path::new("/home/.config")),
@@ -204,11 +237,78 @@ mod tests {
     fn with_nothing_anywhere_the_plan_starts_in_the_working_directory() {
         let path = resolve_path(
             None,
+            None,
             Path::new("/work"),
             Some(Path::new("/home/.config")),
             &present(&[]),
         );
         assert_eq!(path, PathBuf::from("/work/tree.yaml"));
+    }
+
+    #[test]
+    fn the_active_plan_outranks_the_working_directory_but_not_an_explicit_path() {
+        let active = PathBuf::from("/home/.config/taltree/plans/frontend.yaml");
+        let present = present(&[
+            "/work/tree.yaml",
+            "/home/.config/taltree/plans/frontend.yaml",
+        ]);
+        assert_eq!(
+            resolve_path(
+                None,
+                Some(&active),
+                Path::new("/work"),
+                Some(Path::new("/home/.config")),
+                &present,
+            ),
+            active
+        );
+        assert_eq!(
+            resolve_path(
+                Some(Path::new("/work/tree.yaml")),
+                Some(&active),
+                Path::new("/work"),
+                Some(Path::new("/home/.config")),
+                &present,
+            ),
+            PathBuf::from("/work/tree.yaml")
+        );
+    }
+
+    #[test]
+    fn an_active_plan_that_is_gone_falls_through_to_the_ordinary_search() {
+        let path = resolve_path(
+            None,
+            Some(Path::new("/home/.config/taltree/plans/deleted.yaml")),
+            Path::new("/work"),
+            Some(Path::new("/home/.config")),
+            &present(&["/work/tree.yaml"]),
+        );
+        assert_eq!(path, PathBuf::from("/work/tree.yaml"));
+    }
+
+    #[test]
+    fn the_active_pointer_is_one_line_holding_a_path() {
+        let read = |path: &Path| {
+            (path == Path::new("/home/.config/taltree/active"))
+                .then(|| "  /plans/frontend.yaml\n".to_string())
+        };
+        assert_eq!(
+            active_plan_path(Some(Path::new("/home/.config")), &read),
+            Some(PathBuf::from("/plans/frontend.yaml"))
+        );
+        assert_eq!(active_plan_path(None, &read), None);
+        assert_eq!(
+            active_plan_path(Some(Path::new("/elsewhere")), &read),
+            None,
+            "no pointer file means no active plan"
+        );
+        assert_eq!(
+            active_plan_path(Some(Path::new("/home/.config")), &|_| Some(
+                "  \n".to_string()
+            )),
+            None,
+            "an empty pointer means no active plan"
+        );
     }
 
     #[test]

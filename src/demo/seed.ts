@@ -41,6 +41,7 @@ function node(
   return {
     id,
     title,
+    group: null,
     cost,
     status: "open",
     deferredOn: null,

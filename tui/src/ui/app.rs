@@ -319,6 +319,7 @@ impl App {
             Action::BeginAdd => self.begin_add(None),
             Action::BeginEdit => self.begin_edit(None),
             Action::BeginNotes => self.begin_notes(),
+            Action::BeginGroup => self.begin_group(),
             Action::BeginLink => self.begin_link(),
             Action::BeginDelete => self.begin_delete(),
             Action::BeginCommand => self.mode = Mode::Command(TextInput::default()),
@@ -585,6 +586,19 @@ impl App {
         ));
     }
 
+    fn begin_group(&mut self) {
+        let Some(node) = self.selected.as_deref().and_then(|id| self.plan.node(id)) else {
+            self.status = Status::warn("Select a node to file into a group.");
+            return;
+        };
+        self.mode = Mode::Prompt(Prompt::prefilled(
+            PromptKind::Group {
+                id: node.id.clone(),
+            },
+            node.group.clone().unwrap_or_default(),
+        ));
+    }
+
     fn begin_link(&mut self) {
         let Some(id) = self.selected.clone() else {
             self.status = Status::warn("Select the node that needs a prerequisite.");
@@ -716,6 +730,13 @@ impl App {
                     ..NodePatch::default()
                 },
             ),
+            PromptKind::Group { id } => self.commit_edit(
+                &id,
+                NodePatch {
+                    group: Some(Some(text)),
+                    ..NodePatch::default()
+                },
+            ),
             PromptKind::Budget => match parse_points(&text, MAX_BUDGET) {
                 Ok(budget) => self.set_budget(budget),
                 Err(message) => self.status = Status::error(message),
@@ -733,10 +754,19 @@ impl App {
 
     fn create(&mut self, title: String, cost: u32) {
         let prerequisite_ids = self.selected.clone().into_iter().collect();
+        // A node added while working inside a section belongs to that section; it
+        // already inherits the selection as its prerequisite for the same reason.
+        let group = self
+            .selected
+            .as_deref()
+            .and_then(|id| self.plan.node(id))
+            .and_then(|node| node.group_label())
+            .map(str::to_string);
         let input = NodeInput {
             title,
             cost,
             prerequisite_ids,
+            group,
         };
         match crate::domain::plan::create_node(&self.plan, &input, self.clock.as_ref()) {
             Ok((next, id)) => {
@@ -918,6 +948,21 @@ impl App {
                     );
                 } else {
                     self.status = Status::warn("Select a node to annotate.");
+                }
+            }
+            "group" => {
+                if rest.is_empty() {
+                    self.begin_group();
+                } else if let Some(id) = self.selected.clone() {
+                    self.commit_edit(
+                        &id,
+                        NodePatch {
+                            group: Some(Some(rest.to_string())),
+                            ..NodePatch::default()
+                        },
+                    );
+                } else {
+                    self.status = Status::warn("Select a node to file into a group.");
                 }
             }
             "budget" => {

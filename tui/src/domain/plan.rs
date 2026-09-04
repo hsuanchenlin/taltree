@@ -136,6 +136,7 @@ pub fn create_node(
     synced.nodes.push(PlanNode {
         id: id.clone(),
         title,
+        group: normalize_group(input.group.clone())?,
         cost,
         status: NodeStatus::Open,
         deferred_on: None,
@@ -146,7 +147,7 @@ pub fn create_node(
     Ok((synced, id))
 }
 
-/// Change a node's title, cost, prerequisites, or notes.
+/// Change a node's title, cost, prerequisites, notes, or group.
 pub fn edit_node(
     plan: &Plan,
     node_id: &str,
@@ -177,12 +178,17 @@ pub fn edit_node(
         Some(value) => value.clone().filter(|text| !text.trim().is_empty()),
         None => node.notes.clone(),
     };
+    let group = match &patch.group {
+        Some(value) => normalize_group(value.clone())?,
+        None => node.group.clone(),
+    };
 
     let updated = PlanNode {
         title,
         cost,
         prerequisite_ids,
         notes,
+        group,
         ..node.clone()
     };
     Ok(replace_node(&synced, updated))
@@ -448,6 +454,22 @@ fn open_prereqs(plan: &Plan, node: &PlanNode) -> Vec<NamedRef> {
         .filter(|prereq| !prereq.is_completed())
         .map(NamedRef::from)
         .collect()
+}
+
+fn normalize_group(group: Option<String>) -> PlanResult<Option<String>> {
+    let Some(raw) = group else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > MAX_TITLE {
+        return Err(PlanError::invalid(format!(
+            "Node group must be {MAX_TITLE} characters or fewer."
+        )));
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 fn parse_node_fields(title: &str, cost: u32) -> PlanResult<(String, u32)> {

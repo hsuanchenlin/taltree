@@ -36,7 +36,7 @@ export function HelpDialog({
         Selecting a node explains its cost, whether it fits remaining budget, what
         it would unlock immediately, and which dependents stay blocked with their
         direct remaining prerequisite. Switch to the list if you want the same plan
-        grouped by state.
+        grouped by state. Nodes that share a group label collapse together there.
       </p>
       <p>
         Unused budget expires when the date changes. Unfinished work stays in the

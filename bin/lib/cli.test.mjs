@@ -99,6 +99,66 @@ describe("parseArgs", () => {
   });
 });
 
+describe("the plan-library commands", () => {
+  it("lists the library with `taltree plans`", () => {
+    expect(parseArgs(["plans"])).toEqual({ command: "plans" });
+    expect(() => parseArgs(["plans", "frontend"])).toThrow(CliError);
+  });
+
+  it("still treats a path that begins with a command word as a path", () => {
+    expect(parseArgs(["plans/today.yaml"])).toEqual(tui({ tuiArgs: ["plans/today.yaml"] }));
+    expect(parseArgs(["import.yaml"])).toEqual(tui({ tuiArgs: ["import.yaml"] }));
+    expect(parseArgs(["--", "plans"])).toEqual(tui({ tuiArgs: ["plans"] }));
+  });
+
+  it("takes a roadmap slug, an overwrite, and a budget for `taltree import`", () => {
+    expect(parseArgs(["import", "frontend"])).toEqual({
+      command: "import",
+      slug: "frontend",
+      force: false,
+      budget: null,
+    });
+    expect(parseArgs(["import", "--force", "--budget", "4", "rust"])).toEqual({
+      command: "import",
+      slug: "rust",
+      force: true,
+      budget: 4,
+    });
+    expect(parseArgs(["import", "--budget=12", "rust"]).budget).toBe(12);
+  });
+
+  it("refuses an import it cannot act on", () => {
+    expect(() => parseArgs(["import"])).toThrow(CliError);
+    expect(() => parseArgs(["import", "a", "b"])).toThrow(CliError);
+    expect(() => parseArgs(["import", "frontend", "--wat"])).toThrow(CliError);
+    expect(() => parseArgs(["import", "frontend", "--budget"])).toThrow(CliError);
+    expect(() => parseArgs(["import", "frontend", "--budget", "many"])).toThrow(CliError);
+    expect(() => parseArgs(["import", "frontend", "--budget", "500"])).toThrow(CliError);
+  });
+
+  it("takes a plan name, or --none, for `taltree load`", () => {
+    expect(parseArgs(["load", "frontend"])).toEqual({
+      command: "load",
+      plan: "frontend",
+      clear: false,
+    });
+    expect(parseArgs(["load", "./plans/today.yaml"]).plan).toBe("./plans/today.yaml");
+    expect(parseArgs(["load", "--none"])).toEqual({ command: "load", plan: null, clear: true });
+  });
+
+  it("refuses a load it cannot act on", () => {
+    expect(() => parseArgs(["load"])).toThrow(CliError);
+    expect(() => parseArgs(["load", "a", "b"])).toThrow(CliError);
+    expect(() => parseArgs(["load", "--none", "frontend"])).toThrow(CliError);
+    expect(() => parseArgs(["load", "--wat"])).toThrow(CliError);
+  });
+
+  it("answers --help on a library command with the help screen", () => {
+    expect(parseArgs(["import", "--help"]).command).toBe("help");
+    expect(parseArgs(["plans", "-h"]).command).toBe("help");
+  });
+});
+
 describe("helpText", () => {
   it("documents the terminal default, --web, update, --check, and --port", () => {
     const text = helpText();
@@ -108,5 +168,13 @@ describe("helpText", () => {
     expect(text).toContain("--check");
     expect(text).toContain("--port");
     expect(text).toContain(String(DEFAULT_PORT));
+  });
+
+  it("documents the library commands and where imported content comes from", () => {
+    const text = helpText();
+    expect(text).toContain("taltree plans");
+    expect(text).toContain("taltree load <plan>");
+    expect(text).toContain("taltree import <slug>");
+    expect(text).toContain("roadmap.sh's topic text is theirs");
   });
 });

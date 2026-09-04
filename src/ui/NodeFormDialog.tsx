@@ -27,6 +27,7 @@ export function NodeFormDialog({
   const [cost, setCost] = useState(1);
   const [prerequisiteIds, setPrerequisiteIds] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [group, setGroup] = useState("");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -41,9 +42,20 @@ export function NodeFormDialog({
     setCost(node?.cost ?? 1);
     setPrerequisiteIds(node?.prerequisiteIds ?? []);
     setNotes(node?.notes ?? "");
+    setGroup(node?.group ?? "");
   }, [open, node]);
 
   const candidates = plan.nodes.filter((item) => item.id !== node?.id);
+  // Offer the groups the plan already names, so a section is joined rather than
+  // retyped, while the field stays free text for a new one.
+  const knownGroups = [
+    ...new Set(
+      plan.nodes
+        .map((item) => item.group?.trim())
+        .filter((label): label is string => Boolean(label)),
+    ),
+  ];
+  const groupListId = `${titleId}-groups`;
 
   return (
     <dialog
@@ -57,7 +69,7 @@ export function NodeFormDialog({
         method="dialog"
         onSubmit={(event) => {
           event.preventDefault();
-          const saved = onSubmit({ title, cost, prerequisiteIds, notes });
+          const saved = onSubmit({ title, cost, prerequisiteIds, notes, group });
           if (saved) onClose();
         }}
       >
@@ -83,6 +95,23 @@ export function NodeFormDialog({
             onChange={(event) => setCost(Number.parseInt(event.target.value, 10) || 0)}
           />
         </label>
+        <label>
+          Group <span className="quiet">optional</span>
+          <input
+            value={group}
+            onChange={(event) => setGroup(event.target.value)}
+            maxLength={200}
+            list={knownGroups.length > 0 ? groupListId : undefined}
+            placeholder="Leave blank for none"
+          />
+        </label>
+        {knownGroups.length > 0 ? (
+          <datalist id={groupListId}>
+            {knownGroups.map((label) => (
+              <option key={label} value={label} />
+            ))}
+          </datalist>
+        ) : null}
         <label>
           Notes
           <textarea

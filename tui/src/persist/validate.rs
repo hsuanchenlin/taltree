@@ -55,6 +55,19 @@ pub fn validate_plan(mut plan: Plan) -> PlanResult<Plan> {
                 "Node titles must be {MAX_TITLE} characters or fewer."
             )));
         }
+        node.group = node
+            .group
+            .take()
+            .map(|label| label.trim().to_string())
+            .filter(|label| !label.is_empty());
+        if let Some(label) = &node.group {
+            if label.chars().count() > MAX_TITLE {
+                return Err(PlanError::invalid(format!(
+                    "Node \"{}\" group must be {MAX_TITLE} characters or fewer.",
+                    node.title
+                )));
+            }
+        }
         if node.cost > MAX_COST {
             return Err(PlanError::invalid(format!(
                 "Node \"{}\" cost must be a whole number from 0 to {MAX_COST}.",
@@ -195,6 +208,28 @@ mod tests {
         let error = validate_plan(plan).expect_err("cycle");
         assert_eq!(error.code, PlanErrorCode::Cycle);
         assert!(!error.path.is_empty());
+    }
+
+    #[test]
+    fn a_group_label_is_trimmed_and_a_blank_one_is_dropped() {
+        let plan = plan_with(vec![
+            PlanNode::open("a", "A", 1).grouped("  Basics  "),
+            PlanNode::open("b", "B", 1).grouped("   "),
+            PlanNode::open("c", "C", 1),
+        ]);
+        let checked = validate_plan(plan).expect("valid");
+        assert_eq!(checked.node("a").unwrap().group.as_deref(), Some("Basics"));
+        assert_eq!(checked.node("b").unwrap().group, None);
+        assert_eq!(checked.node("c").unwrap().group, None);
+    }
+
+    #[test]
+    fn an_overlong_group_label_is_refused() {
+        let plan = plan_with(vec![
+            PlanNode::open("a", "A", 1).grouped("g".repeat(MAX_TITLE + 1))
+        ]);
+        let error = validate_plan(plan).expect_err("group");
+        assert!(error.message.contains("group must be"), "{}", error.message);
     }
 
     #[test]
