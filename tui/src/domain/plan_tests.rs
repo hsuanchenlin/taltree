@@ -222,6 +222,7 @@ fn creating_a_node_derives_a_readable_id_and_keeps_it_unique() {
             title: "  Water the plants  ".to_string(),
             cost: 1,
             prerequisite_ids: vec!["walk".to_string()],
+            ..NodeInput::default()
         },
         &clock,
     )
@@ -236,6 +237,7 @@ fn creating_a_node_derives_a_readable_id_and_keeps_it_unique() {
             title: "Water the plants".to_string(),
             cost: 1,
             prerequisite_ids: Vec::new(),
+            ..NodeInput::default()
         },
         &clock,
     )
@@ -252,6 +254,7 @@ fn creating_a_node_with_an_unknown_prerequisite_is_refused() {
             title: "Ghost".to_string(),
             cost: 1,
             prerequisite_ids: vec!["nope".to_string()],
+            ..NodeInput::default()
         },
         &today(),
     )
@@ -267,6 +270,7 @@ fn titles_and_costs_are_checked_before_anything_changes() {
             title: "   ".to_string(),
             cost: 1,
             prerequisite_ids: Vec::new(),
+            ..NodeInput::default()
         },
         &today(),
     )
@@ -279,11 +283,78 @@ fn titles_and_costs_are_checked_before_anything_changes() {
             title: "Too big".to_string(),
             cost: MAX_COST + 1,
             prerequisite_ids: Vec::new(),
+            ..NodeInput::default()
         },
         &today(),
     )
     .expect_err("cost too high");
     assert_eq!(pricey.code, PlanErrorCode::Invalid);
+}
+
+#[test]
+fn a_group_is_trimmed_and_a_blank_one_is_none() {
+    let (plan, id) = create_node(
+        &chain_plan(),
+        &NodeInput {
+            title: "Water the plants".to_string(),
+            cost: 1,
+            group: Some("  Outdoors  ".to_string()),
+            ..NodeInput::default()
+        },
+        &today(),
+    )
+    .expect("create");
+    assert_eq!(plan.node(&id).unwrap().group.as_deref(), Some("Outdoors"));
+    assert_eq!(
+        inspect(&plan, &today()).listing(&id).unwrap().kind,
+        NodeKind::Eligible
+    );
+
+    let plan = edit_node(
+        &plan,
+        &id,
+        &NodePatch {
+            group: Some(Some("   ".to_string())),
+            ..NodePatch::default()
+        },
+        &today(),
+    )
+    .expect("clear group");
+    assert_eq!(plan.node(&id).unwrap().group, None);
+}
+
+#[test]
+fn grouping_a_node_does_not_change_what_is_eligible() {
+    let plan = edit_node(
+        &chain_plan(),
+        "tax",
+        &NodePatch {
+            group: Some(Some("Paperwork".to_string())),
+            ..NodePatch::default()
+        },
+        &today(),
+    )
+    .expect("group");
+    assert_eq!(
+        inspect(&plan, &today()).listing("tax").unwrap().kind,
+        NodeKind::Blocked
+    );
+}
+
+#[test]
+fn an_overlong_group_label_is_refused_before_the_plan_changes() {
+    let error = create_node(
+        &chain_plan(),
+        &NodeInput {
+            title: "Ghost".to_string(),
+            cost: 1,
+            group: Some("g".repeat(MAX_TITLE + 1)),
+            ..NodeInput::default()
+        },
+        &today(),
+    )
+    .expect_err("group too long");
+    assert_eq!(error.code, PlanErrorCode::Invalid);
 }
 
 #[test]

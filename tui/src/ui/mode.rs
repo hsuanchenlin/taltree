@@ -94,6 +94,7 @@ pub enum PromptKind {
     EditTitle { id: String },
     EditCost { id: String, title: String },
     Notes { id: String },
+    Group { id: String },
     Budget,
     PlanTitle,
 }
@@ -108,6 +109,7 @@ impl PromptKind {
             PromptKind::EditTitle { .. } => "Title".to_string(),
             PromptKind::EditCost { title, .. } => format!("Cost for \"{title}\" in points"),
             PromptKind::Notes { .. } => "Notes".to_string(),
+            PromptKind::Group { .. } => "Group (blank for none)".to_string(),
             PromptKind::Budget => "Daily budget in points".to_string(),
             PromptKind::PlanTitle => "Plan title".to_string(),
         }

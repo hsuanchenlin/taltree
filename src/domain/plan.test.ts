@@ -312,6 +312,41 @@ describe("notes", () => {
   });
 });
 
+describe("groups", () => {
+  it("files a new node under a group and treats a blank label as none", () => {
+    let plan = add(emptyPlan(today), today, {
+      title: "Find receipts",
+      cost: 2,
+      group: "  Paperwork  ",
+    });
+    expect(byTitle(plan, "Find receipts").group).toBe("Paperwork");
+    expect(kindOf(plan, today, "Find receipts")).toBe("eligible");
+
+    plan = add(plan, today, { title: "Take a walk", cost: 1, group: "   " });
+    expect(byTitle(plan, "Take a walk").group).toBeNull();
+  });
+
+  it("can move a node between groups or take it back out, without changing eligibility", () => {
+    let plan = proposalChain(today);
+    const draft = byTitle(plan, "Draft the proposal").id;
+    const send = byTitle(plan, "Send the proposal").id;
+    plan = unwrap(editNode(plan, draft, { group: "Writing" }, today));
+    plan = unwrap(editNode(plan, send, { group: "Writing" }, today));
+    expect(kindOf(plan, today, "Draft the proposal")).toBe("eligible");
+    expect(kindOf(plan, today, "Send the proposal")).toBe("blocked");
+
+    plan = unwrap(editNode(plan, send, { group: "" }, today));
+    expect(byTitle(plan, "Send the proposal").group).toBeNull();
+    expect(kindOf(plan, today, "Send the proposal")).toBe("blocked");
+  });
+
+  it("refuses a group label longer than a title", () => {
+    const plan = emptyPlan(today);
+    const result = createNode(plan, { title: "Find receipts", cost: 2, group: "g".repeat(201) }, today);
+    expectError(result, "invalid");
+  });
+});
+
 describe("rollover", () => {
   it("keeps unfinished work after a missed day", () => {
     let plan = proposalChain(today);

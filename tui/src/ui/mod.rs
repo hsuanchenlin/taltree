@@ -7,3 +7,4 @@ pub mod help;
 pub mod keys;
 pub mod mode;
 pub mod render;
+pub mod rows;

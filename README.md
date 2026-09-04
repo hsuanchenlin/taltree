@@ -17,7 +17,7 @@ Requires a stable Rust toolchain.
 
 ```bash
 cd tui
-cargo run                 # opens ./tree.yaml, or seeds a starter plan
+cargo run                 # opens the active plan, else ./tree.yaml
 cargo install --path .    # puts the internal `taltree-tui` binary on your PATH
 ```
 
@@ -58,17 +58,29 @@ npm link        # or: npm install -g .
 `npm link` is recommended: it keeps the command bound to this git checkout, which `taltree update` needs.
 
 ```bash
-taltree                 # open ./tree.yaml in the terminal application
+taltree                 # open the active plan, or ./tree.yaml, in the terminal
 taltree plans/next.yaml # open a specific plan
 taltree -e              # start empty instead of seeded with the demo
 taltree -- --help       # the terminal application's own usage
 taltree --web           # run the browser build's dev server and open it instead
+taltree plans           # list plans in ~/.config/taltree/plans
+taltree load frontend   # make that plan the one taltree opens
+taltree load --none     # forget the active plan and go back to ./tree.yaml
+taltree import frontend # fetch a roadmap.sh roadmap into the library
 taltree update          # git pull, rebuild and reinstall both builds
 taltree update --check  # report whether an update exists, change nothing
 taltree --help          # launcher usage
 ```
 
 `taltree` runs the native terminal application, handing it the terminal directly so raw mode, keys, and colour behave exactly as they do under `cargo run`. The first launch compiles the release binary (a Rust toolchain is required); later launches start it straight away. The launcher claims only the arguments listed above and passes everything else - and everything after `--` - to the application unchanged, so its own options and plan paths need no escaping unless they collide with one of those.
+
+### Plan library
+
+Imported and hand-written plans live in `~/.config/taltree/plans/` (or `$XDG_CONFIG_HOME/taltree/plans`). `taltree plans` lists them. `taltree load <name>` writes a one-line pointer at `~/.config/taltree/active`. The terminal application opens that file. `taltree --web` takes it up once when you switch to it, then keeps what you edit in the browser until you load another plan or `taltree load --none`.
+
+`taltree import <slug>` fetches one roadmap from [roadmap.sh](https://roadmap.sh)'s public API onto your machine, converts the drawn boxes into Taltree nodes, and saves `~/.config/taltree/plans/<slug>.yaml`. Only node titles, ids, and the edges the document actually draws are written. roadmap.sh's topic text is all-rights-reserved; Taltree neither ships it nor fetches it. Most of a typical roadmap's ordering is visual rather than an edge, so disconnected nodes arrive as roots for you to wire up. Section labels become optional `group` fields.
+
+Pass `--force` to replace an imported plan of the same name, and `--budget <n>` to set the daily budget (default 8).
 
 `taltree update` fast-forwards this checkout, then rebuilds the terminal application, reinstalls it as `taltree-tui` with `cargo install --path tui --bin taltree-tui --force`, and reinstalls the browser build's dependencies. The distinct native name keeps the public `taltree` command bound to the launcher. With `npm install -g .` the installed copy is not a git checkout, so `taltree update` prints re-install instructions instead of pulling.
 
@@ -93,7 +105,7 @@ The **talent tree** is the main workspace: a dark relic slab of circular rune so
 2. Select a node on the tree. The strip above the board states the spend consequence; blocked nodes name the unfinished prerequisite; an eligible selection marks what **Unlocks next**.
 3. The detail pane repeats **This choice**: cost, whether it fits remaining budget, **Immediately unlocks**, and **Still blocked after this**.
 4. **Complete** spends the cost and refreshes remaining budget and the tree. **Defer today** keeps the node incomplete and off today's frontier until tomorrow (or until you return it).
-5. **New node** / **Edit** set title, cost, hard prerequisites, and free-text notes. Directed cycles are rejected with the loop named.
+5. **New node** / **Edit** set title, cost, an optional group, hard prerequisites, and free-text notes. Directed cycles are rejected with the loop named. In the list view, nodes that share a `group` sit under that heading, which you can collapse.
 
 Drag anywhere on the board to pan; a quick release continues with momentum. Scroll or pinch to smoothly zoom around the pointer or touch midpoint, and use `+` / `-` / `0` to zoom and fit. Double-click or double-tap a node to center it. Arrows move to a nearby node on the tree. `f` centers the selected node, and `v` toggles the list. Camera motion stops immediately when reduced motion is preferred.
 
@@ -132,12 +144,14 @@ The plan is a version 1 JSON document stored in this browser under `localStorage
 
 `deferredOn` is the local `YYYY-MM-DD` the node was deferred. After that day it is eligible again if its prerequisites are done. Changing `activeDate` in the file is unnecessary: opening the app on a new day resets `spentToday` and expires leftover budget.
 
+A node may also carry an optional `group` string, which files it in a named section of the list. Grouping is presentation only: it does not change eligibility, budget, or unlocks. Existing plans without `group` are unchanged.
+
 A node may also carry a free-text `notes` field. Typed resource links live in those notes, not in a separate schema: a line `- [@article@The Internet](https://en.wikipedia.org/wiki/Internet)` is shown as an `article` tag and a title link. Types are `official`, `opensource`, `article`, `course`, `podcast`, `video`, `book`, and `feed`. Keep at most eight, and keep the ones most relevant today rather than the biggest list. Content is keyed by node id, so renaming a title does not lose it.
 
 If a saved plan cannot be read, Taltree loads the demo instead but keeps the unreadable data on this device under `localStorage` key `taltree.plan.v1.broken` and offers **Download the unreadable file**, so nothing is lost. Importing a plan or loading the demo from the toolbar clears that backup.
 
 ## Scope (Slice 0)
 
-This slice is the interactive talent tree, daily-budget ledger, and unlock explanations. It does not include syllabus import, Obsidian, LLM extraction, collaboration, accounts, XP, streaks, avatars, push notifications, or calendar auto-scheduling. The list/detail view remains as an accessible alternative; the product is not canvas-only.
+This slice is the interactive talent tree, daily-budget ledger, and unlock explanations. On-demand import of a roadmap.sh roadmap as a plan is supported (`taltree import`); Taltree does not bundle that content, and it is not a learning platform. It does not include Obsidian, LLM extraction, collaboration, accounts, XP, streaks, avatars, push notifications, or calendar auto-scheduling. The list/detail view remains as an accessible alternative; the product is not canvas-only.
 
 Representative tree states used while building this slice are in [`docs/talent-tree/`](docs/talent-tree/).

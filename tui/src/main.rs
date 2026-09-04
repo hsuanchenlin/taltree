@@ -72,8 +72,12 @@ fn resolve(options: &Options) -> PathBuf {
         std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
         std::env::var("HOME").ok().as_deref(),
     );
+    let active = cli::active_plan_path(config_dir.as_deref(), &|path: &Path| {
+        std::fs::read_to_string(path).ok()
+    });
     cli::resolve_path(
         options.path.as_deref(),
+        active.as_deref(),
         &working_dir,
         config_dir.as_deref(),
         &|candidate: &Path| candidate.exists(),

@@ -304,6 +304,64 @@ fn the_list_view_explains_every_node_in_one_column() {
 }
 
 #[test]
+fn the_list_view_rules_off_each_group_it_finds() {
+    let mut plan = plan();
+    plan.nodes[0] = plan.nodes[0].clone().grouped("Paperwork");
+    plan.nodes[1] = plan.nodes[1].clone().grouped("Paperwork");
+    let mut screen = Screen::with_plan(plan, 100, 24);
+    screen.press('v');
+    let lines = screen.draw();
+
+    let header = lines
+        .iter()
+        .position(|line| line.contains("Paperwork"))
+        .expect("a group header");
+    assert!(
+        lines[header].contains('─'),
+        "the header should read as a boundary: {}",
+        lines[header]
+    );
+    assert!(
+        lines[header + 1].contains("Find receipts"),
+        "the group's nodes follow it: {}",
+        lines[header + 1]
+    );
+    let ungrouped = lines
+        .iter()
+        .position(|line| line.contains("Ungrouped"))
+        .expect("leaving a group is headed too");
+    assert!(
+        lines[ungrouped + 1].contains("Take a walk"),
+        "{}",
+        lines[ungrouped + 1]
+    );
+    // The rule has to stop inside the panel, or it paints over the border.
+    for line in [&lines[header], &lines[ungrouped]] {
+        assert!(
+            line.trim_end().ends_with('│'),
+            "a header ran through the panel border: {line}"
+        );
+    }
+}
+
+#[test]
+fn a_plan_with_no_groups_draws_no_headers() {
+    let mut screen = Screen::new(100, 24);
+    screen.press('v');
+    let text = screen.text();
+    assert!(!text.contains("Ungrouped"), "{text}");
+}
+
+#[test]
+fn the_inspector_names_the_group_the_selection_belongs_to() {
+    let mut plan = plan();
+    plan.nodes[0] = plan.nodes[0].clone().grouped("Paperwork");
+    let mut screen = Screen::with_plan(plan, 100, 24);
+    screen.app.selected = Some("receipts".to_string());
+    assert!(screen.text().contains("Paperwork"), "{}", screen.text());
+}
+
+#[test]
 fn an_empty_plan_invites_a_first_node_instead_of_showing_a_blank_board() {
     let mut screen = Screen::new(100, 24);
     screen.app = App::new(

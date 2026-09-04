@@ -45,12 +45,14 @@ export function clearBrokenBackup(storage: Storage): void {
 }
 
 export function serializePlan(plan: Plan): string {
-  return `${JSON.stringify(plan, omitEmptyNotes, 2)}\n`;
+  return `${JSON.stringify(plan, omitEmptyOptionals, 2)}\n`;
 }
 
-/** Match the TUI: omit `notes` when empty so a browser export stays a plain plan. */
-function omitEmptyNotes(key: string, value: unknown): unknown {
-  if (key === "notes" && (value === null || value === "")) return undefined;
+/** Match the TUI: omit the optional fields when empty so an export stays a plain plan. */
+function omitEmptyOptionals(key: string, value: unknown): unknown {
+  if ((key === "notes" || key === "group") && (value === null || value === "")) {
+    return undefined;
+  }
   return value;
 }
 

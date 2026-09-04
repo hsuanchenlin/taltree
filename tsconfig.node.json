@@ -15,7 +15,10 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // The dev-server plugin and the CLI helpers it reuses are plain ESM with no
+    // build step (`AGENTS.md`), so the config has to be able to import them.
+    "allowJs": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vite/**/*.mjs"]
 }

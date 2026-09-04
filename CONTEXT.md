@@ -59,3 +59,7 @@ _Avoid_: Carry-over points, streak freeze, penalty waiver
 **Missed day**:
 A calendar day with no completions. Unused budget expires; nothing is punished.
 _Avoid_: Broken streak, fail day, debt
+
+**Group**:
+An optional label on a node that files it in a named section of the list. Grouping is presentation, never scheduling: it does not change eligibility, budget, or what unlocks what.
+_Avoid_: Tag, folder, epic, category (as a scheduling construct)

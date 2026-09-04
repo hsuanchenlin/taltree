@@ -57,6 +57,7 @@ export function NodeDetail({
         {backLabel}
       </button>
       <header className="detail-head">
+        {node.group ? <p className="detail-group">{node.group}</p> : null}
         <h2>{node.title}</h2>
         <p className="detail-meta">
           <KindMark kind={kind} />

@@ -386,6 +386,69 @@ fn the_notes_command_annotates_the_selection() {
 }
 
 #[test]
+fn the_group_command_files_the_selection_and_a_blank_label_takes_it_back_out() {
+    let mut session = Session::new(chain_plan());
+    session
+        .select("receipts")
+        .press(':')
+        .type_text("group Paperwork")
+        .enter();
+    assert_eq!(
+        session
+            .saved()
+            .node("receipts")
+            .expect("receipts")
+            .group
+            .as_deref(),
+        Some("Paperwork")
+    );
+
+    // M opens the prompt prefilled; clearing it takes the node back out of the group.
+    session.select("receipts").press('M');
+    for _ in 0.."Paperwork".len() {
+        session.code(KeyCode::Backspace);
+    }
+    session.enter();
+    assert_eq!(
+        session.saved().node("receipts").expect("receipts").group,
+        None
+    );
+}
+
+#[test]
+fn a_node_added_inside_a_group_joins_it() {
+    let mut plan = chain_plan();
+    plan.nodes[0] = plan.nodes[0].clone().grouped("Paperwork");
+    let mut session = Session::new(plan);
+    session
+        .select("receipts")
+        .press('a')
+        .type_text("Post the envelope")
+        .enter()
+        .enter();
+
+    let saved = session.saved();
+    let added = saved
+        .nodes
+        .iter()
+        .find(|node| node.title == "Post the envelope")
+        .expect("the new node");
+    assert_eq!(added.group.as_deref(), Some("Paperwork"));
+    assert_eq!(added.prerequisite_ids, vec!["receipts"]);
+}
+
+#[test]
+fn a_group_is_presentation_and_never_changes_what_is_eligible() {
+    let mut plan = chain_plan();
+    plan.nodes[0] = plan.nodes[0].clone().grouped("Paperwork");
+    plan.nodes[2] = plan.nodes[2].clone().grouped("Outdoors");
+    let session = Session::new(plan);
+    assert_eq!(session.kind_of("receipts"), NodeKind::Eligible);
+    assert_eq!(session.kind_of("walk"), NodeKind::Eligible);
+    assert_eq!(session.kind_of("tax"), NodeKind::Blocked);
+}
+
+#[test]
 fn searching_filters_live_and_n_walks_the_matches() {
     let mut session = Session::new(chain_plan());
     session.press('/').type_text("a");
